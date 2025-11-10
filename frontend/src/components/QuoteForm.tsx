@@ -205,9 +205,17 @@ export default function QuoteForm() {
     if (errors[name]) setErrors((prev) => ({ ...prev, [name]: "" }));
   };
 
-  const handleBlur = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value, type, checked } = e.target;
-    const err = validateField(name, type === "checkbox" ? checked : value);
+  const handleBlur = (
+    e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>
+  ) => {
+    const el = e.currentTarget;
+    const name = el.name;
+
+    const isCheckbox =
+      el instanceof HTMLInputElement && el.type === "checkbox";
+    const valueForValidation = isCheckbox ? el.checked : el.value;
+
+    const err = validateField(name, valueForValidation);
     if (err) setErrors((p) => ({ ...p, [name]: err }));
     else {
       const copy = { ...errors };
