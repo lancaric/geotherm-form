@@ -129,7 +129,7 @@ export default function QuoteForm() {
 
   // async job (okamžitá success obrazovka + pozadie)
   const [jobId, setJobId] = useState<string | null>(null);
-  const [jobStatus, setJobStatus] = useState<"pending" | "sent_firm" | "sent_user" | "error" | null>(null);
+  const [_, setJobStatus] = useState<"pending" | "sent_firm" | "sent_user" | "error" | null>(null);
 
   // overlay stav
   const [overlay, setOverlay] = useState<{
