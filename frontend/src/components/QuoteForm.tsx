@@ -1,4 +1,3 @@
-// frontend/src/components/QuoteForm.tsx
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 
@@ -131,6 +130,14 @@ export default function QuoteForm() {
   // async job (okamžitá success obrazovka + pozadie)
   const [jobId, setJobId] = useState<string | null>(null);
   const [jobStatus, setJobStatus] = useState<"pending" | "sent_firm" | "sent_user" | "error" | null>(null);
+
+  // overlay stav
+  const [overlay, setOverlay] = useState<{
+    open: boolean;
+    state: "loading" | "success" | "error";
+    title: string;
+    subtitle?: string;
+  }>({ open: false, state: "loading", title: "", subtitle: "" });
 
   const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:4000";
 
@@ -346,7 +353,7 @@ export default function QuoteForm() {
     }
   };
 
-  // === submit: okamžitá „prijaté“ obrazovka + jobId, e-maily bežia v pozadí ===
+  // === submit: overlay + jobId, e-maily bežia v pozadí ===
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -377,6 +384,14 @@ export default function QuoteForm() {
       .map((u) => u.server!) as ServerFile[];
 
     try {
+      // pred odoslaním
+      setOverlay({
+        open: true,
+        state: "loading",
+        title: "Odosielam žiadosť…",
+        subtitle: "Spracovanie prebieha na pozadí. Môžete stránku zavrieť.",
+      });
+
       setPhase("submitting");
 
       const res = await fetch(`${apiUrl}/api/form`, {
@@ -389,10 +404,26 @@ export default function QuoteForm() {
 
       setJobId(data.jobId || null);
       setJobStatus("pending");
-      setPhase("success"); // hneď informujeme: „prijaté – e-maily sa odosielajú v pozadí“
+      setPhase("success");
+
+      // po úspechu
+      setOverlay({
+        open: true,
+        state: "success",
+        title: "Žiadosť prijatá ",
+        subtitle: "Email sa odosiela do firmy. Potvrdzujúci email dostanete po úspešnom doručení.",
+      });
     } catch (err) {
       console.error(err);
       setPhase("error");
+
+      // pri chybe
+      setOverlay({
+        open: true,
+        state: "error",
+        title: "Ups, odoslanie zlyhalo",
+        subtitle: "Skúste to prosím znova alebo nás kontaktujte inak.",
+      });
     }
   };
 
@@ -412,6 +443,11 @@ export default function QuoteForm() {
     return () => clearInterval(t);
   }, [jobId, apiUrl]);
 
+  // zamknutie scrollu keď je overlay otvorený
+  useEffect(() => {
+    document.body.style.overflow = overlay.open ? "hidden" : "";
+  }, [overlay.open]);
+
   const isBusy = phase === "submitting";
   const allUploads = [...nbUploads, ...recUploads];
   const hasUploading = allUploads.some((u) => u.status === "uploading");
@@ -423,103 +459,77 @@ export default function QuoteForm() {
   return (
     <div className="min-h-screen bg-slate-100 flex items-center justify-center py-10 px-4">
       <form onSubmit={handleSubmit} className="w-full max-w-3xl bg-white rounded-2xl shadow-xl p-6 md:p-8 space-y-8 relative">
-
-        {/* overlay len počas POST /api/form (kým získame jobId) */}
-        {isBusy && (
-          <div className="absolute inset-0 bg-white/70 backdrop-blur-sm rounded-2xl flex flex-col items-center justify-center gap-3 z-10">
-            <span className="h-10 w-10 border-4 border-amber-400 border-t-transparent rounded-full animate-spin" />
-            <p className="text-sm text-slate-700 font-medium">Spracúvam žiadosť…</p>
-          </div>
-        )}
-
-        {/* success – informačná obrazovka s live stavom */}
-        {phase === "success" && (
-          <div className="absolute inset-0 bg-white/90 rounded-2xl flex flex-col items-center justify-center gap-4 z-10 text-center p-6">
-            <div className="h-16 w-16 rounded-full bg-emerald-100 flex items-center justify-center">
-              <svg className="h-9 w-9 text-emerald-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-                <path d="m9 11 3 3L22 4" />
-              </svg>
-            </div>
-            <h3 className="text-lg font-semibold text-slate-800">Žiadosť prijatá 👌</h3>
-
-            {jobStatus === "pending" && (
-              <p className="text-sm text-slate-500 max-w-sm">
-                Môžete stránku pokojne zatvoriť. E-maily sa odosielajú na pozadí. Očakávajte potvrdenie do 5 minút.
-              </p>
-            )}
-            {jobStatus === "sent_firm" && (
-              <p className="text-sm text-slate-500 max-w-sm">
-                Správa bola doručená firme. Posielame potvrdenie na váš e-mail…
-              </p>
-            )}
-            {jobStatus === "sent_user" && (
-              <p className="text-sm text-emerald-600 max-w-sm">
-                Hotovo — potvrdzujúci e-mail bol odoslaný. Ďakujeme!
-              </p>
-            )}
-            {jobStatus === "error" && (
-              <p className="text-sm text-red-600 max-w-sm">
-                Prijali sme vašu žiadosť, ale nastala chyba pri doručení do firmy.
-                Skúste to, prosím, znova alebo nás kontaktujte telefonicky.
-              </p>
-            )}
-
-            {jobId && (
-              <p className="text-xs text-slate-400">ID žiadosti: <span className="font-mono">{jobId}</span></p>
-            )}
-
-            <button type="button" onClick={() => setPhase("idle")} className="px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 transition">
-              Zavrieť
-            </button>
-          </div>
-        )}
-
-        {/* error */}
-        {phase === "error" && (
-          <div className="absolute inset-0 bg-white/90 rounded-2xl flex flex-col items-center justify-center gap-4 z-10 text-center p-6">
-            <div className="h-16 w-16 rounded-full bg-red-100 flex items-center justify-center">
-              <svg className="h-9 w-9 text-red-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10" />
-                <line x1="15" y1="9" x2="9" y2="15" />
-                <line x1="9" y1="9" x2="15" y2="15" />
-              </svg>
-            </div>
-            <h3 className="text-lg font-semibold text-slate-800">Ajaj, niečo sa pokazilo 😕</h3>
-            <p className="text-sm text-slate-500 max-w-sm">Skúste to, prosím, znova alebo nám údaje pošlite e-mailom.</p>
-            <button type="button" onClick={() => setPhase("idle")} className="px-4 py-2 bg-slate-400 text-white rounded-lg text-sm font-medium hover:bg-slate-500 transition">
-              Skúsiť znova
-            </button>
-          </div>
-        )}
-
         {/* HLAVIČKA */}
         <div className="text-center space-y-2">
-          <h1 className="text-2xl md:text-3xl font-semibold text-slate-900">Vyplňte formulár a my vám pripravíme návrh a cenovú ponuku</h1>
+          <h1 className="text-2xl md:text-3xl font-semibold text-slate-900">
+            Vyplňte formulár a my vám pripravíme návrh a cenovú ponuku
+          </h1>
           <p className="text-sm text-slate-500">vykurovanie · vetranie · chladenie</p>
         </div>
 
         {/* KONTAKTNÉ ÚDAJE */}
         <section className="space-y-4">
-          <h2 className="text-lg font-medium text-slate-800 border-b border-slate-100 pb-2">Kontaktné údaje</h2>
+          <h2 className="text-lg font-medium text-slate-800 border-b border-slate-100 pb-2">
+            Kontaktné údaje
+          </h2>
           <div className="grid md:grid-cols-2 gap-4">
             <div>
-              <label className="label" htmlFor="name">Meno a priezvisko *</label>
-              <input id="name" name="name" value={form.name} onChange={handleChange} onBlur={handleBlur} disabled={phase!=="idle"} className={`input ${errors.name ? "input-error" : ""}`} placeholder="napr. Ján Novák" />
+              <label className="label" htmlFor="name">
+                Meno a priezvisko *
+              </label>
+              <input
+                id="name"
+                name="name"
+                value={form.name}
+                onChange={handleChange}
+                onBlur={handleBlur}
+                disabled={isBusy}
+                className={`input ${errors.name ? "input-error" : ""}`}
+                placeholder="napr. Ján Novák"
+              />
               {errors.name && <p className="error-text">{errors.name}</p>}
             </div>
 
             {/* honeypot */}
-            <input type="text" name="hp_company" tabIndex={-1} autoComplete="off" className="hidden" />
+            <input
+              type="text"
+              name="hp_company"
+              tabIndex={-1}
+              autoComplete="off"
+              className="hidden"
+            />
 
             <div>
-              <label className="label" htmlFor="phone">Telefón *</label>
-              <input id="phone" name="phone" value={form.phone} onChange={handleChange} onBlur={handleBlur} disabled={phase!=="idle"} className={`input ${errors.phone ? "input-error" : ""}`} placeholder="+421 ..." />
+              <label className="label" htmlFor="phone">
+                Telefón *
+              </label>
+              <input
+                id="phone"
+                name="phone"
+                value={form.phone}
+                onChange={handleChange}
+                onBlur={handleBlur}
+                disabled={isBusy}
+                className={`input ${errors.phone ? "input-error" : ""}`}
+                placeholder="+421 ..."
+              />
               {errors.phone && <p className="error-text">{errors.phone}</p>}
             </div>
             <div className="md:col-span-2">
-              <label className="label" htmlFor="email">E-mail *</label>
-              <input id="email" name="email" type="email" value={form.email} onChange={handleChange} onBlur={handleBlur} disabled={phase!=="idle"} className={`input ${errors.email ? "input-error" : ""}`} placeholder="napr. info@vasmail.sk" />
+              <label className="label" htmlFor="email">
+                E-mail *
+              </label>
+              <input
+                id="email"
+                name="email"
+                type="email"
+                value={form.email}
+                onChange={handleChange}
+                onBlur={handleBlur}
+                disabled={isBusy}
+                className={`input ${errors.email ? "input-error" : ""}`}
+                placeholder="napr. info@vasmail.sk"
+              />
               {errors.email && <p className="error-text">{errors.email}</p>}
             </div>
           </div>
@@ -527,28 +537,84 @@ export default function QuoteForm() {
 
         {/* INFO O STAVBE */}
         <section className="space-y-4">
-          <h2 className="text-lg font-medium text-slate-800 border-b border-slate-100 pb-2">Informácie o stavbe</h2>
-          <p className="text-sm text-slate-500">Riešime vykurovanie ako funkčný celok a používame kvalitné tepelné čerpadlá, cena kotolne sa zvyčajne pohybuje od 9 800 €.</p>
+          <h2 className="text-lg font-medium text-slate-800 border-b border-slate-100 pb-2">
+            Informácie o stavbe
+          </h2>
+          <p className="text-sm text-slate-500">
+            Riešime vykurovanie ako funkčný celok a používame kvalitné tepelné čerpadlá, cena
+            kotolne sa zvyčajne pohybuje od 9 800 €.
+          </p>
           <div className="flex flex-wrap gap-3">
-            <label className="radio"><input type="radio" name="buildingType" value="dom" checked={form.buildingType==="dom"} onChange={handleChange} />Rodinný dom</label>
-            <label className="radio"><input type="radio" name="buildingType" value="byt" checked={form.buildingType==="byt"} onChange={handleChange} />Byt</label>
-            <label className="radio"><input type="radio" name="buildingType" value="objekt" checked={form.buildingType==="objekt"} onChange={handleChange} />Podnikateľský objekt</label>
+            <label className="radio">
+              <input
+                type="radio"
+                name="buildingType"
+                value="dom"
+                checked={form.buildingType === "dom"}
+                onChange={handleChange}
+              />
+              Rodinný dom
+            </label>
+            <label className="radio">
+              <input
+                type="radio"
+                name="buildingType"
+                value="byt"
+                checked={form.buildingType === "byt"}
+                onChange={handleChange}
+              />
+              Byt
+            </label>
+            <label className="radio">
+              <input
+                type="radio"
+                name="buildingType"
+                value="objekt"
+                checked={form.buildingType === "objekt"}
+                onChange={handleChange}
+              />
+              Podnikateľský objekt
+            </label>
           </div>
 
           <div>
-            <label className="label" htmlFor="place">Obec / miesto stavby *</label>
-            <input id="place" name="place" value={form.place} onChange={handleChange} onBlur={handleBlur} className={`input ${errors.place ? "input-error" : ""}`} placeholder="napr. Nitra, okres Nitra" />
+            <label className="label" htmlFor="place">
+              Obec / miesto stavby *
+            </label>
+            <input
+              id="place"
+              name="place"
+              value={form.place}
+              onChange={handleChange}
+              onBlur={handleBlur}
+              className={`input ${errors.place ? "input-error" : ""}`}
+              placeholder="napr. Nitra, okres Nitra"
+            />
             {errors.place && <p className="error-text">{errors.place}</p>}
           </div>
         </section>
 
         {/* TERMÍN */}
         <section className="space-y-4">
-          <h2 className="text-lg font-medium text-slate-800 border-b border-slate-100 pb-2">Predpokladaný termín inštalácie</h2>
+          <h2 className="text-lg font-medium text-slate-800 border-b border-slate-100 pb-2">
+            Predpokladaný termín inštalácie
+          </h2>
           <div className="flex flex-wrap gap-2">
-            {["Ihneď","Do 3 mesiacov","Do 6 mesiacov","Do 12 mesiacov","Viac ako 12 mesiacov"].map((label) => (
+            {[
+              "Ihneď",
+              "Do 3 mesiacov",
+              "Do 6 mesiacov",
+              "Do 12 mesiacov",
+              "Viac ako 12 mesiacov",
+            ].map((label) => (
               <label key={label} className="chip">
-                <input type="radio" name="installTime" value={label} checked={form.installTime===label} onChange={handleChange} />
+                <input
+                  type="radio"
+                  name="installTime"
+                  value={label}
+                  checked={form.installTime === label}
+                  onChange={handleChange}
+                />
                 {label}
               </label>
             ))}
@@ -557,27 +623,84 @@ export default function QuoteForm() {
 
         {/* VOLITEĽNÉ SEKCIE – prepínače */}
         <section className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
-          <h3 className="text-slate-800 font-medium">Chcem vyplniť podrobné informácie o stavbe</h3>
-          <p className="text-sm text-slate-500">Nepovinné, ale pomôže to pri presnejšej cenovej ponuke.</p>
+          <h3 className="text-slate-800 font-medium">
+            Chcem vyplniť podrobné informácie o stavbe
+          </h3>
+          <p className="text-sm text-slate-500">
+            Nepovinné, ale pomôže to pri presnejšej cenovej ponuke.
+          </p>
           <div className="flex flex-wrap gap-4">
-            <label className="checkbox"><input type="checkbox" name="newBuild" checked={form.newBuild} onChange={handleChange} />Novostavba</label>
-            <label className="checkbox"><input type="checkbox" name="reconstruction" checked={form.reconstruction} onChange={handleChange} />Rekonštrukcia</label>
+            <label className="checkbox">
+              <input
+                type="checkbox"
+                name="newBuild"
+                checked={form.newBuild}
+                onChange={handleChange}
+              />
+              Novostavba
+            </label>
+            <label className="checkbox">
+              <input
+                type="checkbox"
+                name="reconstruction"
+                checked={form.reconstruction}
+                onChange={handleChange}
+              />
+              Rekonštrukcia
+            </label>
           </div>
         </section>
 
         {/* === NOVOSTAVBA === */}
-        <div className={`transition-all duration-300 overflow-hidden ${activeExtra==="new" ? "max-h-[4000px] opacity-100 mt-2" : "max-h-0 opacity-0"}`}>
+        <div
+          className={`transition-all duration-300 overflow-hidden ${
+            activeExtra === "new" ? "max-h-[4000px] opacity-100 mt-2" : "max-h-0 opacity-0"
+          }`}
+        >
           <section className="bg-slate-50 border rounded-xl p-5 mt-2 space-y-4">
-            <h3 className="text-base font-semibold text-slate-700">Podrobné informácie o stavbe – novostavba</h3>
-            <p className="text-sm text-slate-500">Vyplňte, čo poznáte. Všetky polia sú nepovinné.</p>
+            <h3 className="text-base font-semibold text-slate-700">
+              Podrobné informácie o stavbe – novostavba
+            </h3>
+            <p className="text-sm text-slate-500">
+              Vyplňte, čo poznáte. Všetky polia sú nepovinné.
+            </p>
 
             <div className="grid md:grid-cols-2 gap-4">
-              <div><label className="label">Vykurovaná plocha (m²)</label><input name="nb_heatedArea" value={form.nb_heatedArea} onChange={handleChange} className="input" /></div>
-              <div><label className="label">Počet poschodí</label><input name="nb_floors" value={form.nb_floors} onChange={handleChange} className="input" /></div>
-              <div><label className="label">Tepelná strata [kW]</label><input name="nb_heatLoss" value={form.nb_heatLoss} onChange={handleChange} className="input" /></div>
+              <div>
+                <label className="label">Vykurovaná plocha (m²)</label>
+                <input
+                  name="nb_heatedArea"
+                  value={form.nb_heatedArea}
+                  onChange={handleChange}
+                  className="input"
+                />
+              </div>
+              <div>
+                <label className="label">Počet poschodí</label>
+                <input
+                  name="nb_floors"
+                  value={form.nb_floors}
+                  onChange={handleChange}
+                  className="input"
+                />
+              </div>
+              <div>
+                <label className="label">Tepelná strata [kW]</label>
+                <input
+                  name="nb_heatLoss"
+                  value={form.nb_heatLoss}
+                  onChange={handleChange}
+                  className="input"
+                />
+              </div>
               <div>
                 <label className="label">Aktuálny stav</label>
-                <select name="nb_actualState" value={form.nb_actualState} onChange={handleChange} className="input">
+                <select
+                  name="nb_actualState"
+                  value={form.nb_actualState}
+                  onChange={handleChange}
+                  className="input"
+                >
                   <option value="">-- vyberte --</option>
                   <option value="projektová príprava">projektová príprava</option>
                   <option value="stavebné povolenie">stavebné povolenie</option>
@@ -592,21 +715,36 @@ export default function QuoteForm() {
             <div>
               <label className="label">Ako ste sa o nás dozvedeli?</label>
               <div className="flex flex-wrap gap-3 text-sm">
-                {["Google","Google reklama","Facebook","Odporúčanie","Iné"].map((item) => (
-                  <label key={item} className="chip">
-                    <input type="radio" name="nb_sourceInfo" value={item} checked={form.nb_sourceInfo===item} onChange={handleChange} />
-                    {item}
-                  </label>
-                ))}
+                {["Google", "Google reklama", "Facebook", "Odporúčanie", "Iné"].map(
+                  (item) => (
+                    <label key={item} className="chip">
+                      <input
+                        type="radio"
+                        name="nb_sourceInfo"
+                        value={item}
+                        checked={form.nb_sourceInfo === item}
+                        onChange={handleChange}
+                      />
+                      {item}
+                    </label>
+                  )
+                )}
               </div>
             </div>
 
             <div className="grid md:grid-cols-2 gap-4">
               <div>
                 <label className="label">Tepelné čerpadlo</label>
-                <select name="nb_hp" value={form.nb_hp} onChange={handleChange} className="input">
+                <select
+                  name="nb_hp"
+                  value={form.nb_hp}
+                  onChange={handleChange}
+                  className="input"
+                >
                   <option value="">-</option>
-                  <option value="zem-voda (plošný kolektor)">zem-voda (plošný kolektor)</option>
+                  <option value="zem-voda (plošný kolektor)">
+                    zem-voda (plošný kolektor)
+                  </option>
                   <option value="zem-voda (hlbinný vrt)">zem-voda (hlbinný vrt)</option>
                   <option value="voda-voda">voda-voda</option>
                   <option value="vzduch-voda">vzduch-voda</option>
@@ -616,7 +754,12 @@ export default function QuoteForm() {
               </div>
               <div>
                 <label className="label">Kotol</label>
-                <select name="nb_boiler" value={form.nb_boiler} onChange={handleChange} className="input">
+                <select
+                  name="nb_boiler"
+                  value={form.nb_boiler}
+                  onChange={handleChange}
+                  className="input"
+                >
                   <option value="">-</option>
                   <option value="plynový kondenzačný">plynový kondenzačný</option>
                   <option value="elektrický">elektrický</option>
@@ -624,7 +767,12 @@ export default function QuoteForm() {
               </div>
               <div>
                 <label className="label">Solárny systém</label>
-                <select name="nb_solar" value={form.nb_solar} onChange={handleChange} className="input">
+                <select
+                  name="nb_solar"
+                  value={form.nb_solar}
+                  onChange={handleChange}
+                  className="input"
+                >
                   <option value="">-</option>
                   <option value="áno">áno</option>
                   <option value="nie">nie</option>
@@ -632,7 +780,12 @@ export default function QuoteForm() {
               </div>
               <div>
                 <label className="label">Rekuperácia</label>
-                <select name="nb_rekuperacia" value={form.nb_rekuperacia} onChange={handleChange} className="input">
+                <select
+                  name="nb_rekuperacia"
+                  value={form.nb_rekuperacia}
+                  onChange={handleChange}
+                  className="input"
+                >
                   <option value="">-</option>
                   <option value="áno">áno</option>
                   <option value="nie">nie</option>
@@ -640,7 +793,12 @@ export default function QuoteForm() {
               </div>
               <div>
                 <label className="label">Fotovoltaika</label>
-                <select name="nb_fv" value={form.nb_fv} onChange={handleChange} className="input">
+                <select
+                  name="nb_fv"
+                  value={form.nb_fv}
+                  onChange={handleChange}
+                  className="input"
+                >
                   <option value="">-</option>
                   <option value="áno">áno</option>
                   <option value="nie">nie</option>
@@ -651,9 +809,21 @@ export default function QuoteForm() {
             <div>
               <label className="label">Plánované využitie zdroja</label>
               <div className="flex flex-wrap gap-3 text-sm">
-                {["vykurovanie","chladenie","vetranie","ohrev teplej vody","ohrev bazénovej vody"].map((item) => (
+                {[
+                  "vykurovanie",
+                  "chladenie",
+                  "vetranie",
+                  "ohrev teplej vody",
+                  "ohrev bazénovej vody",
+                ].map((item) => (
                   <label key={item} className="checkbox">
-                    <input type="checkbox" name="nb_plannedUse" value={item} checked={form.nb_plannedUse.includes(item)} onChange={handleChange} />
+                    <input
+                      type="checkbox"
+                      name="nb_plannedUse"
+                      value={item}
+                      checked={form.nb_plannedUse.includes(item)}
+                      onChange={handleChange}
+                    />
                     {item}
                   </label>
                 ))}
@@ -663,17 +833,29 @@ export default function QuoteForm() {
             <div className="grid md:grid-cols-2 gap-4">
               <div>
                 <label className="label">Vykurovanie domu</label>
-                <select name="nb_systemHeating" value={form.nb_systemHeating} onChange={handleChange} className="input">
+                <select
+                  name="nb_systemHeating"
+                  value={form.nb_systemHeating}
+                  onChange={handleChange}
+                  className="input"
+                >
                   <option value="">-</option>
                   <option value="podlahové">podlahové</option>
                   <option value="stenové">stenové</option>
                   <option value="radiátorové">radiátorové</option>
-                  <option value="kombinované (podlahové/radiátorové)">kombinované (podlahové/radiátorové)</option>
+                  <option value="kombinované (podlahové/radiátorové)">
+                    kombinované (podlahové/radiátorové)
+                  </option>
                 </select>
               </div>
               <div>
                 <label className="label">Chladenie domu</label>
-                <select name="nb_systemCooling" value={form.nb_systemCooling} onChange={handleChange} className="input">
+                <select
+                  name="nb_systemCooling"
+                  value={form.nb_systemCooling}
+                  onChange={handleChange}
+                  className="input"
+                >
                   <option value="">-</option>
                   <option value="stropné">stropné</option>
                   <option value="podlahové">podlahové</option>
@@ -684,11 +866,18 @@ export default function QuoteForm() {
               </div>
               <div>
                 <label className="label">Priestorová / zónová regulácia</label>
-                <select name="nb_zoneControl" value={form.nb_zoneControl} onChange={handleChange} className="input">
+                <select
+                  name="nb_zoneControl"
+                  value={form.nb_zoneControl}
+                  onChange={handleChange}
+                  className="input"
+                >
                   <option value="">-</option>
                   <option value="áno">áno</option>
                   <option value="nie">nie</option>
-                  <option value="inteligentná elektroinštalácia / nadradená regulácia">inteligentná elektroinštalácia / nadradená regulácia</option>
+                  <option value="inteligentná elektroinštalácia / nadradená regulácia">
+                    inteligentná elektroinštalácia / nadradená regulácia
+                  </option>
                 </select>
               </div>
             </div>
@@ -696,23 +885,53 @@ export default function QuoteForm() {
             {/* upload – novostavba */}
             <div>
               <label className="label">Zašlite nám pôdorysy / technickú správu</label>
-              <input type="file" multiple onChange={(e) => handleAddFiles(e, "nb")} className="input file:mr-3 file:py-2 file:px-3 file:border-0 file:bg-amber-100 file:text-amber-900" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" />
-              <p className="text-xs text-slate-400 mt-1">Povolené: PDF, DOC, DOCX, JPG, PNG. Max. 5 MB/súbor. Limit spolu 20 MB.</p>
+              <input
+                type="file"
+                multiple
+                onChange={(e) => handleAddFiles(e, "nb")}
+                className="input file:mr-3 file:py-2 file:px-3 file:border-0 file:bg-amber-100 file:text-amber-900"
+                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+              />
+              <p className="text-xs text-slate-400 mt-1">
+                Povolené: PDF, DOC, DOCX, JPG, PNG. Max. 5 MB/súbor. Limit spolu 20 MB.
+              </p>
 
               {nbUploads.length > 0 && (
                 <ul className="space-y-2 mt-2">
                   {nbUploads.map((u) => (
                     <li key={u.localId} className="flex items-center gap-3">
-                      <button type="button" onClick={() => handleRemoveUpload(u.localId, "nb")} className="shrink-0 h-6 w-6 rounded-full border border-slate-300 hover:bg-slate-100 text-slate-500 flex items-center justify-center" title={u.status==="uploading" ? "Zrušiť nahrávanie" : "Odstrániť prílohu"}>×</button>
-                      <div className="min-w-0 text-sm text-slate-700 truncate">{u.file.name}</div>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveUpload(u.localId, "nb")}
+                        className="shrink-0 h-6 w-6 rounded-full border border-slate-300 hover:bg-slate-100 text-slate-500 flex items-center justify-center"
+                        title={
+                          u.status === "uploading"
+                            ? "Zrušiť nahrávanie"
+                            : "Odstrániť prílohu"
+                        }
+                      >
+                        ×
+                      </button>
+                      <div className="min-w-0 text-sm text-slate-700 truncate">
+                        {u.file.name}
+                      </div>
                       {u.status === "uploading" && (
                         <div className="flex-1 h-2 bg-slate-200 rounded-full overflow-hidden">
-                          <div className="h-2 bg-amber-500 transition-all" style={{ width: `${u.progress}%` }} />
+                          <div
+                            className="h-2 bg-amber-500 transition-all"
+                            style={{ width: `${u.progress}%` }}
+                          />
                         </div>
                       )}
-                      {u.status === "done" && <span className="text-emerald-600 text-sm">✓</span>}
-                      {u.status === "error" && <span className="text-red-600 text-sm">✕</span>}
-                      {u.status === "deleting" && <span className="text-slate-400 text-xs">odstraňujem…</span>}
+                      {u.status === "done" && (
+                        <span className="text-emerald-600 text-sm">✓</span>
+                      )}
+                      {u.status === "error" && (
+                        <span className="text-red-600 text-sm">✕</span>
+                      )}
+                      {u.status === "deleting" && (
+                        <span className="text-slate-400 text-xs">odstraňujem…</span>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -721,40 +940,107 @@ export default function QuoteForm() {
 
             <div>
               <label className="label">Poznámky a iné požiadavky</label>
-              <textarea name="nb_note" value={form.nb_note} onChange={handleChange} className="input min-h-[80px]" />
+              <textarea
+                name="nb_note"
+                value={form.nb_note}
+                onChange={handleChange}
+                className="input min-h-[80px]"
+              />
             </div>
           </section>
         </div>
 
         {/* === REKONŠTRUKCIA === */}
-        <div className={`transition-all duration-300 overflow-hidden ${activeExtra==="recon" ? "max-h-[4000px] opacity-100 mt-2" : "max-h-0 opacity-0"}`}>
+        <div
+          className={`transition-all duration-300 overflow-hidden ${
+            activeExtra === "recon" ? "max-h-[4000px] opacity-100 mt-2" : "max-h-0 opacity-0"
+          }`}
+        >
           <section className="bg-slate-50 border rounded-xl p-5 mt-2 space-y-4">
-            <h3 className="text-base font-semibold text-slate-700">Podrobné informácie o stavbe – rekonštrukcia</h3>
-            <p className="text-sm text-slate-500">Vyplňte, čo poznáte. Všetko je nepovinné.</p>
+            <h3 className="text-base font-semibold text-slate-700">
+              Podrobné informácie o stavbe – rekonštrukcia
+            </h3>
+            <p className="text-sm text-slate-500">
+              Vyplňte, čo poznáte. Všetko je nepovinné.
+            </p>
 
             <div className="grid md:grid-cols-2 gap-4">
-              <div><label className="label">Vykurovaná plocha (m²)</label><input name="rec_heatedArea" value={form.rec_heatedArea} onChange={handleChange} className="input" /></div>
-              <div><label className="label">Počet poschodí</label><input name="rec_floors" value={form.rec_floors} onChange={handleChange} className="input" /></div>
-              <div><label className="label">Tepelná strata [kW]</label><input name="rec_heatLoss" value={form.rec_heatLoss} onChange={handleChange} className="input" /></div>
-              <div><label className="label">Ročná spotreba (plyn/drevo/peliet)</label><input name="rec_annualConsumption" value={form.rec_annualConsumption} onChange={handleChange} className="input" placeholder="napr. 1500 m³ plynu" /></div>
-              <div><label className="label">Rok výstavby</label><input name="rec_constructionYear" value={form.rec_constructionYear} onChange={handleChange} className="input" /></div>
+              <div>
+                <label className="label">Vykurovaná plocha (m²)</label>
+                <input
+                  name="rec_heatedArea"
+                  value={form.rec_heatedArea}
+                  onChange={handleChange}
+                  className="input"
+                />
+              </div>
+              <div>
+                <label className="label">Počet poschodí</label>
+                <input
+                  name="rec_floors"
+                  value={form.rec_floors}
+                  onChange={handleChange}
+                  className="input"
+                />
+              </div>
+              <div>
+                <label className="label">Tepelná strata [kW]</label>
+                <input
+                  name="rec_heatLoss"
+                  value={form.rec_heatLoss}
+                  onChange={handleChange}
+                  className="input"
+                />
+              </div>
+              <div>
+                <label className="label">Ročná spotreba (plyn/drevo/peliet)</label>
+                <input
+                  name="rec_annualConsumption"
+                  value={form.rec_annualConsumption}
+                  onChange={handleChange}
+                  className="input"
+                  placeholder="napr. 1500 m³ plynu"
+                />
+              </div>
+              <div>
+                <label className="label">Rok výstavby</label>
+                <input
+                  name="rec_constructionYear"
+                  value={form.rec_constructionYear}
+                  onChange={handleChange}
+                  className="input"
+                />
+              </div>
             </div>
 
             <div>
               <label className="label">Ako ste sa o nás dozvedeli?</label>
               <div className="flex flex-wrap gap-3 text-sm">
-                {["Google","Google reklama","Facebook","Odporúčanie","Iné"].map((item) => (
-                  <label key={item} className="chip">
-                    <input type="radio" name="rec_sourceInfo" value={item} checked={form.rec_sourceInfo===item} onChange={handleChange} />
-                    {item}
-                  </label>
-                ))}
+                {["Google", "Google reklama", "Facebook", "Odporúčanie", "Iné"].map(
+                  (item) => (
+                    <label key={item} className="chip">
+                      <input
+                        type="radio"
+                        name="rec_sourceInfo"
+                        value={item}
+                        checked={form.rec_sourceInfo === item}
+                        onChange={handleChange}
+                      />
+                      {item}
+                    </label>
+                  )
+                )}
               </div>
             </div>
 
             <div>
               <label className="label">Zateplenie</label>
-              <select name="rec_insulation" value={form.rec_insulation} onChange={handleChange} className="input">
+              <select
+                name="rec_insulation"
+                value={form.rec_insulation}
+                onChange={handleChange}
+                className="input"
+              >
                 <option value="">-</option>
                 <option value="áno">áno</option>
                 <option value="nie">nie</option>
@@ -762,32 +1048,80 @@ export default function QuoteForm() {
             </div>
 
             <div className="grid md:grid-cols-2 gap-4">
-              <div><label className="label">Zateplenie steny (typ a hrúbka)</label><input name="rec_insulationWalls" value={form.rec_insulationWalls} onChange={handleChange} className="input" /></div>
-              <div><label className="label">Zateplenie podlahy (typ a hrúbka)</label><input name="rec_insulationFloor" value={form.rec_insulationFloor} onChange={handleChange} className="input" /></div>
-              <div><label className="label">Zateplenie stropu (typ a hrúbka)</label><input name="rec_insulationCeiling" value={form.rec_insulationCeiling} onChange={handleChange} className="input" /></div>
+              <div>
+                <label className="label">Zateplenie steny (typ a hrúbka)</label>
+                <input
+                  name="rec_insulationWalls"
+                  value={form.rec_insulationWalls}
+                  onChange={handleChange}
+                  className="input"
+                />
+              </div>
+              <div>
+                <label className="label">Zateplenie podlahy (typ a hrúbka)</label>
+                <input
+                  name="rec_insulationFloor"
+                  value={form.rec_insulationFloor}
+                  onChange={handleChange}
+                  className="input"
+                />
+              </div>
+              <div>
+                <label className="label">Zateplenie stropu (typ a hrúbka)</label>
+                <input
+                  name="rec_insulationCeiling"
+                  value={form.rec_insulationCeiling}
+                  onChange={handleChange}
+                  className="input"
+                />
+              </div>
             </div>
 
             <div>
               <label className="label">Aktuálny/existujúci zdroj tepla</label>
-              <select name="rec_currentHeatSource" value={form.rec_currentHeatSource} onChange={handleChange} className="input">
+              <select
+                name="rec_currentHeatSource"
+                value={form.rec_currentHeatSource}
+                onChange={handleChange}
+                className="input"
+              >
                 <option value="">-</option>
                 <option value="tepelné čerpadlo">tepelné čerpadlo</option>
-                <option value="plynový kotol (nekondenzačný)">plynový kotol (nekondenzačný)</option>
-                <option value="plynový kotol (kondenzačný)">plynový kotol (kondenzačný)</option>
+                <option value="plynový kotol (nekondenzačný)">
+                  plynový kotol (nekondenzačný)
+                </option>
+                <option value="plynový kotol (kondenzačný)">
+                  plynový kotol (kondenzačný)
+                </option>
                 <option value="elektrický kotol">elektrický kotol</option>
-                <option value="kotol na tuhé palivo (bez akumulačného zásobníka)">kotol na tuhé palivo (bez akumulačného zásobníka)</option>
-                <option value="kotol na tuhé palivo (s akumulačným zásobníkom)">kotol na tuhé palivo (s akumulačným zásobníkom)</option>
+                <option value="kotol na tuhé palivo (bez akumulačného zásobníka)">
+                  kotol na tuhé palivo (bez akumulačného zásobníka)
+                </option>
+                <option value="kotol na tuhé palivo (s akumulačným zásobníkom)">
+                  kotol na tuhé palivo (s akumulačným zásobníkom)
+                </option>
                 <option value="teplovodný krb">teplovodný krb</option>
                 <option value="iné">iné...</option>
               </select>
               {form.rec_currentHeatSource === "iné" && (
-                <input name="rec_currentHeatSource_other" value={form.rec_currentHeatSource_other} onChange={handleChange} className="input mt-2" placeholder="Uveďte aký zdroj tepla" />
+                <input
+                  name="rec_currentHeatSource_other"
+                  value={form.rec_currentHeatSource_other}
+                  onChange={handleChange}
+                  className="input mt-2"
+                  placeholder="Uveďte aký zdroj tepla"
+                />
               )}
             </div>
 
             <div>
               <label className="label">Aktuálny zdroj tepla plánujem zachovať</label>
-              <select name="rec_keepCurrentHeatSource" value={form.rec_keepCurrentHeatSource} onChange={handleChange} className="input">
+              <select
+                name="rec_keepCurrentHeatSource"
+                value={form.rec_keepCurrentHeatSource}
+                onChange={handleChange}
+                className="input"
+              >
                 <option value="">-</option>
                 <option value="áno">áno</option>
                 <option value="nie">nie</option>
@@ -796,21 +1130,34 @@ export default function QuoteForm() {
 
             <div>
               <label className="label">Aktuálny/existujúci systém vykurovania</label>
-              <select name="rec_currentHeatingSystem" value={form.rec_currentHeatingSystem} onChange={handleChange} className="input">
+              <select
+                name="rec_currentHeatingSystem"
+                value={form.rec_currentHeatingSystem}
+                onChange={handleChange}
+                className="input"
+              >
                 <option value="">-</option>
                 <option value="podlahové">podlahové</option>
                 <option value="stenové">stenové</option>
                 <option value="radiátorové">radiátorové</option>
-                <option value="kombinované (podlahové/radiátorové)">kombinované (podlahové/radiátorové)</option>
+                <option value="kombinované (podlahové/radiátorové)">
+                  kombinované (podlahové/radiátorové)
+                </option>
               </select>
             </div>
 
             <div>
               <label className="label">Max. teplota vykurovacej vody</label>
               <div className="flex flex-wrap gap-3 text-sm">
-                {["do 40°C","do 50°C","do 65°C","viac ako 65°C"].map((item) => (
+                {["do 40°C", "do 50°C", "do 65°C", "viac ako 65°C"].map((item) => (
                   <label key={item} className="chip">
-                    <input type="radio" name="rec_maxHeatingTemp" value={item} checked={form.rec_maxHeatingTemp===item} onChange={handleChange} />
+                    <input
+                      type="radio"
+                      name="rec_maxHeatingTemp"
+                      value={item}
+                      checked={form.rec_maxHeatingTemp === item}
+                      onChange={handleChange}
+                    />
                     {item}
                   </label>
                 ))}
@@ -819,7 +1166,12 @@ export default function QuoteForm() {
 
             <div>
               <label className="label">Aktuálny/existujúci systém chladenia</label>
-              <select name="rec_currentCooling" value={form.rec_currentCooling} onChange={handleChange} className="input">
+              <select
+                name="rec_currentCooling"
+                value={form.rec_currentCooling}
+                onChange={handleChange}
+                className="input"
+              >
                 <option value="">-</option>
                 <option value="stropné">stropné</option>
                 <option value="podlahové">podlahové</option>
@@ -831,20 +1183,39 @@ export default function QuoteForm() {
 
             <div>
               <label className="label">Priestorová / zónová regulácia</label>
-              <select name="rec_zoneControl" value={form.rec_zoneControl} onChange={handleChange} className="input">
+              <select
+                name="rec_zoneControl"
+                value={form.rec_zoneControl}
+                onChange={handleChange}
+                className="input"
+              >
                 <option value="">-</option>
                 <option value="áno">áno</option>
                 <option value="nie">nie</option>
-                <option value="inteligentná elektroinštalácia / nadradená regulácia">inteligentná elektroinštalácia / nadradená regulácia</option>
+                <option value="inteligentná elektroinštalácia / nadradená regulácia">
+                  inteligentná elektroinštalácia / nadradená regulácia
+                </option>
               </select>
             </div>
 
             <div>
               <label className="label">Plánované využitie zdroja</label>
               <div className="flex flex-wrap gap-3 text-sm">
-                {["vykurovanie","chladenie","vetranie","ohrev teplej vody","ohrev bazénovej vody"].map((item) => (
+                {[
+                  "vykurovanie",
+                  "chladenie",
+                  "vetranie",
+                  "ohrev teplej vody",
+                  "ohrev bazénovej vody",
+                ].map((item) => (
                   <label key={item} className="checkbox">
-                    <input type="checkbox" name="rec_plannedUse" value={item} checked={form.rec_plannedUse.includes(item)} onChange={handleChange} />
+                    <input
+                      type="checkbox"
+                      name="rec_plannedUse"
+                      value={item}
+                      checked={form.rec_plannedUse.includes(item)}
+                      onChange={handleChange}
+                    />
                     {item}
                   </label>
                 ))}
@@ -853,14 +1224,25 @@ export default function QuoteForm() {
 
             <div>
               <label className="label">Nový/uvažovaný zdroj</label>
-              <select name="rec_newSource" value={form.rec_newSource} onChange={handleChange} className="input">
+              <select
+                name="rec_newSource"
+                value={form.rec_newSource}
+                onChange={handleChange}
+                className="input"
+              >
                 <option value="">-</option>
-                <option value="tepelné zem-voda (plošný kolektor)">tepelné zem-voda (plošný kolektor)</option>
-                <option value="tepelné zem-voda (hlbinný vrt)">tepelné zem-voda (hlbinný vrt)</option>
+                <option value="tepelné zem-voda (plošný kolektor)">
+                  tepelné zem-voda (plošný kolektor)
+                </option>
+                <option value="tepelné zem-voda (hlbinný vrt)">
+                  tepelné zem-voda (hlbinný vrt)
+                </option>
                 <option value="tepelné voda-voda">tepelné voda-voda</option>
                 <option value="tepelné vzduch-voda">tepelné vzduch-voda</option>
                 <option value="tepelné ventilačné">tepelné ventilačné</option>
-                <option value="kotol plynový kondenzačný">kotol plynový kondenzačný</option>
+                <option value="kotol plynový kondenzačný">
+                  kotol plynový kondenzačný
+                </option>
                 <option value="kotol elektrický">kotol elektrický</option>
               </select>
             </div>
@@ -868,7 +1250,12 @@ export default function QuoteForm() {
             <div className="grid md:grid-cols-2 gap-4">
               <div>
                 <label className="label">Rekuperácia</label>
-                <select name="rec_rekuperacia" value={form.rec_rekuperacia} onChange={handleChange} className="input">
+                <select
+                  name="rec_rekuperacia"
+                  value={form.rec_rekuperacia}
+                  onChange={handleChange}
+                  className="input"
+                >
                   <option value="">-</option>
                   <option value="áno">áno</option>
                   <option value="nie">nie</option>
@@ -876,7 +1263,12 @@ export default function QuoteForm() {
               </div>
               <div>
                 <label className="label">Fotovoltaika</label>
-                <select name="rec_fotovoltaika" value={form.rec_fotovoltaika} onChange={handleChange} className="input">
+                <select
+                  name="rec_fotovoltaika"
+                  value={form.rec_fotovoltaika}
+                  onChange={handleChange}
+                  className="input"
+                >
                   <option value="">-</option>
                   <option value="áno">áno</option>
                   <option value="nie">nie</option>
@@ -887,23 +1279,53 @@ export default function QuoteForm() {
             {/* upload – rekonštrukcia */}
             <div>
               <label className="label">Zašlite nám pôdorysy / technickú správu</label>
-              <input type="file" multiple onChange={(e) => handleAddFiles(e, "rec")} className="input file:mr-3 file:py-2 file:px-3 file:border-0 file:bg-amber-100 file:text-amber-900" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" />
-              <p className="text-xs text-slate-400 mt-1">Povolené: PDF, DOC, DOCX, JPG, PNG. Max. 5 MB/súbor. Limit spolu 20 MB.</p>
+              <input
+                type="file"
+                multiple
+                onChange={(e) => handleAddFiles(e, "rec")}
+                className="input file:mr-3 file:py-2 file:px-3 file:border-0 file:bg-amber-100 file:text-amber-900"
+                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+              />
+              <p className="text-xs text-slate-400 mt-1">
+                Povolené: PDF, DOC, DOCX, JPG, PNG. Max. 5 MB/súbor. Limit spolu 20 MB.
+              </p>
 
               {recUploads.length > 0 && (
                 <ul className="space-y-2 mt-2">
                   {recUploads.map((u) => (
                     <li key={u.localId} className="flex items-center gap-3">
-                      <button type="button" onClick={() => handleRemoveUpload(u.localId, "rec")} className="shrink-0 h-6 w-6 rounded-full border border-slate-300 hover:bg-slate-100 text-slate-500 flex items-center justify-center" title={u.status==="uploading" ? "Zrušiť nahrávanie" : "Odstrániť prílohu"}>×</button>
-                      <div className="min-w-0 text-sm text-slate-700 truncate">{u.file.name}</div>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveUpload(u.localId, "rec")}
+                        className="shrink-0 h-6 w-6 rounded-full border border-slate-300 hover:bg-slate-100 text-slate-500 flex items-center justify-center"
+                        title={
+                          u.status === "uploading"
+                            ? "Zrušiť nahrávanie"
+                            : "Odstrániť prílohu"
+                        }
+                      >
+                        ×
+                      </button>
+                      <div className="min-w-0 text-sm text-slate-700 truncate">
+                        {u.file.name}
+                      </div>
                       {u.status === "uploading" && (
                         <div className="flex-1 h-2 bg-slate-200 rounded-full overflow-hidden">
-                          <div className="h-2 bg-amber-500 transition-all" style={{ width: `${u.progress}%` }} />
+                          <div
+                            className="h-2 bg-amber-500 transition-all"
+                            style={{ width: `${u.progress}%` }}
+                          />
                         </div>
                       )}
-                      {u.status === "done" && <span className="text-emerald-600 text-sm">✓</span>}
-                      {u.status === "error" && <span className="text-red-600 text-sm">✕</span>}
-                      {u.status === "deleting" && <span className="text-slate-400 text-xs">odstraňujem…</span>}
+                      {u.status === "done" && (
+                        <span className="text-emerald-600 text-sm">✓</span>
+                      )}
+                      {u.status === "error" && (
+                        <span className="text-red-600 text-sm">✕</span>
+                      )}
+                      {u.status === "deleting" && (
+                        <span className="text-slate-400 text-xs">odstraňujem…</span>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -912,7 +1334,12 @@ export default function QuoteForm() {
 
             <div>
               <label className="label">Poznámky a iné požiadavky</label>
-              <textarea name="rec_note" value={form.rec_note} onChange={handleChange} className="input min-h-[80px]" />
+              <textarea
+                name="rec_note"
+                value={form.rec_note}
+                onChange={handleChange}
+                className="input min-h-[80px]"
+              />
             </div>
           </section>
         </div>
@@ -920,19 +1347,52 @@ export default function QuoteForm() {
         {/* GDPR + SUBMIT */}
         <section className="space-y-4">
           <label className="flex gap-3 items-start text-sm text-slate-600">
-            <input type="checkbox" name="gdpr" checked={form.gdpr} onChange={handleChange} onBlur={handleBlur} className="mt-1" />
-            Súhlasím so spracovaním osobných údajov na účely spracovania mojej požiadavky <a className="underline" href="https://www.geotherm.sk/o-nas/ochrana-osobnych-udajov/">(OOÚ)</a>.
+            <input
+              type="checkbox"
+              name="gdpr"
+              checked={form.gdpr}
+              onChange={handleChange}
+              onBlur={handleBlur}
+              className="mt-1"
+            />
+            Súhlasím so spracovaním osobných údajov na účely spracovania mojej požiadavky{" "}
+            <a
+              className="underline"
+              href="https://www.geotherm.sk/o-nas/ochrana-osobnych-udajov/"
+            >
+              (OOÚ)
+            </a>
+            .
           </label>
           {errors.gdpr && <p className="error-text">{errors.gdpr}</p>}
 
-          <button type="submit" disabled={phase==="submitting" || !canSubmit} className={`w-full inline-flex justify-center items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white font-semibold py-3 rounded-xl transition ${phase==="submitting" || !canSubmit ? "opacity-80 cursor-not-allowed" : ""}`}>
-            {hasUploading ? "Čakám na nahratie príloh…" : hasDeleting ? "Odstraňujem prílohu…" : "Odoslať formulár"}
+          <button
+            type="submit"
+            disabled={phase === "submitting" || !canSubmit}
+            className={`w-full inline-flex justify-center items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white font-semibold py-3 rounded-xl transition ${
+              phase === "submitting" || !canSubmit ? "opacity-80 cursor-not-allowed" : ""
+            }`}
+          >
+            {hasUploading
+              ? "Čakám na nahratie príloh…"
+              : hasDeleting
+              ? "Odstraňujem prílohu…"
+              : "Odoslať formulár"}
           </button>
-          {hasError && <p className="error-text mt-1">Skontrolujte neúspešné prílohy a skúste ich znova nahrať.</p>}
+          {hasError && (
+            <p className="error-text mt-1">
+              Skontrolujte neúspešné prílohy a skúste ich znova nahrať.
+            </p>
+          )}
         </section>
 
         <footer className="text-center text-xs text-slate-400 pt-4 border-t">
-          Ak by sa formulár nepodarilo odoslať, kontaktujte nás na <span className="text-slate-500 font-medium">+421 905 665 755</span> alebo <a href="mailto:sturdik@geotherm.sk" className="underline">sturdik@geotherm.sk</a>.
+          Ak by sa formulár nepodarilo odoslať, kontaktujte nás na{" "}
+          <span className="text-slate-500 font-medium">+421 905 665 755</span> alebo{" "}
+          <a href="mailto:sturdik@geotherm.sk" className="underline">
+            sturdik@geotherm.sk
+          </a>
+          .
         </footer>
       </form>
 
@@ -947,6 +1407,101 @@ export default function QuoteForm() {
         .chip input { accent-color:#f59e0b; }
         .chip:hover { border-color:#facc15; background:#fff; }
       `}</style>
+
+      {/* Fullscreen overlay – jediné status UI */}
+      <FullScreenStatusOverlay
+        open={overlay.open}
+        state={overlay.state}
+        title={overlay.title}
+        subtitle={overlay.subtitle}
+        onClose={() => setOverlay((o) => ({ ...o, open: false }))}
+        onRetry={() => setOverlay((o) => ({ ...o, open: false }))}
+      />
+    </div>
+  );
+}
+
+// FullScreenStatusOverlay – izolovaný, nemení tvoje UI
+function FullScreenStatusOverlay({
+  open,
+  state, // 'loading' | 'success' | 'error'
+  title,
+  subtitle,
+  onClose,
+  onRetry,
+}: {
+  open: boolean;
+  state: "loading" | "success" | "error";
+  title: string;
+  subtitle?: string;
+  onClose?: () => void;
+  onRetry?: () => void;
+}) {
+  if (!open) return null;
+  return (
+    <div
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+    >
+      <div className="mx-4 w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-2xl">
+        <div className="mb-4 flex items-center justify-center">
+          {state === "loading" && (
+            <div
+              className="h-14 w-14 animate-spin rounded-full border-4 border-gray-200 border-t-gray-700"
+              aria-label="Spracovávam…"
+            />
+          )}
+          {state === "success" && (
+            <div className="grid h-14 w-14 place-items-center rounded-full bg-emerald-100">
+              <svg viewBox="0 0 24 24" className="h-8 w-8 text-emerald-600" aria-hidden="true">
+                <path fill="currentColor" d="M9 16.2l-3.5-3.5 1.4-1.4 2.1 2.1 5.7-5.7 1.4 1.4z" />
+              </svg>
+            </div>
+          )}
+          {state === "error" && (
+            <div className="grid h-14 w-14 place-items-center rounded-full bg-rose-100">
+              <svg viewBox="0 0 24 24" className="h-8 w-8 text-rose-600" aria-hidden="true">
+                <path
+                  fill="currentColor"
+                  d="M12 2a10 10 0 1010 10A10.011 10.011 0 0012 2zm3.54 13.46l-1.08 1.08L12 13.08l-2.46 2.46-1.08-1.08L10.92 12 8.46 9.54l1.08-1.08L12 10.92l2.46-2.46 1.08 1.08L13.08 12z"
+                />
+              </svg>
+            </div>
+          )}
+        </div>
+
+        <h3 className="mb-1 text-lg font-semibold">{title}</h3>
+        {subtitle && <p className="mb-5 text-sm text-gray-600">{subtitle}</p>}
+
+        <div className="flex justify-center gap-2">
+          {state === "loading" ? null : state === "success" ? (
+            <button
+              onClick={onClose}
+              className="inline-flex rounded-lg bg-emerald-600 px-4 py-2 text-white hover:bg-emerald-700"
+              autoFocus
+            >
+              OK, rozumiem
+            </button>
+          ) : (
+            <>
+              <button
+                onClick={onRetry}
+                className="inline-flex rounded-lg bg-gray-900 px-4 py-2 text-white hover:bg-black"
+                autoFocus
+              >
+                Skúsiť znova
+              </button>
+              <button
+                onClick={onClose}
+                className="inline-flex rounded-lg bg-white px-4 py-2 text-gray-700 ring-1 ring-gray-300 hover:bg-gray-50"
+              >
+                Zavrieť
+              </button>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
