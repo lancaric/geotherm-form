@@ -1,405 +1,357 @@
-Geotherm – online formulár pre dopyty
-=====================================
-
-Komplexný systém pre odosielanie zákazníckych dopytov vrátane viacnásobných príloh, emailových notifikácií a pokročilej validácie.
-
-Projekt pozostáva z:
-
-*   **frontend** – SPA aplikácia v React/Vite
-    
-*   **backend API** – Node.js/Express server s emailovou logikou a správou príloh
-    
-
-Produkčná testovacia verzia beží na adrese:  
-`https://geotherm.kikoland.fun`
-
-> Tento projekt je pripravený na presun na finálnu doménu Geotherm Slovakia s.r.o.
-
-* * *
-
-📌 Obsah
---------
-
-*   Architektúra projektu
-    
-*   Funkcionalita z pohľadu používateľa
-    
-*   Použité technológie
-    
-*   Štruktúra priečinkov
-    
-*   Inštalácia – vývojové prostredie
-    
-*   Environment variables
-    
-*   Spustenie vo vývoji
-    
-*   Build a produkčné nasadenie
-    
-*   Nginx reverse proxy & SSL
-    
-*   Pipeline pre upload súborov
-    
-*   Email notifikácie – workflow
-    
-*   Bezpečnostné odporúčania
-    
-*   Údržba a rozšírenia
-    
-
-* * *
-
-🏗 Architektúra projektu
-------------------------
-
-### Frontend
-
-*   React + TypeScript (Vite)
-    
-*   TailwindCSS pre dizajn a layout
-    
-*   Single-page aplikácia (SPA)
-    
-*   Pokročilý formulár s:
-    
-    *   validáciou počas písania (meno, email, telefón, povinné polia)
-        
-    *   rozlíšením **Novostavba / Rekonštrukcia**
-        
-    *   doplnkovými nepovinnými sekciami (technické detaily stavby)
-        
-    *   nahrávaním viacerých príloh
-        
-    *   fullscreen overlayom (stav odosielania)
-        
-
-### Backend
-
-*   Node.js (Express)
-    
-*   REST API endpointy (príklad):
-    
-    *   `POST /api/upload` – upload jednej prílohy
-        
-    *   `DELETE /api/upload/:id` – zmazanie nahratej prílohy
-        
-    *   `POST /api/form` (resp. podľa aktuálnej implementácie `/api/submit`) – spracovanie formulára a emailov
-        
-*   Ukladanie príloh na disk do `backend/uploads`
-    
-*   Odosielanie emailov cez SMTP (Gmail – App Password)
-    
-*   Automatické zmazanie príloh po spracovaní (úspech aj chyba)
-    
-
-### Nasadenie
-
-*   **Ubuntu server** (self-hosted VPS/domáci server)
-    
-*   **Nginx** ako reverse proxy pred frontendom + backendom
-    
-*   **systemd** služba pre backend (`geotherm-api.service`)
-    
-*   **Let’s Encrypt / Certbot** – HTTPS certifikáty
-    
-
-* * *
-
-👀 Funkcionalita z pohľadu používateľa
---------------------------------------
-
-1.  Používateľ otvorí formulár (desktop / mobil).
-    
-2.  Vyplní základné údaje (meno, email, telefón, typ stavby, správa).
-    
-3.  Voliteľne vyplní doplnkové technické údaje (Novostavba/Rekonštrukcia).
-    
-4.  Pridá prílohy (projekt, pôdorysy, technické správy):
-    
-    *   povolené typy: `.pdf`, `.doc`, `.docx`, `.jpg`, `.jpeg`, `.png`
-        
-    *   1 súbor max **5 MB**
-        
-    *   všetky súbory spolu max **20 MB**
-        
-5.  Po výbere sa prílohy **automaticky nahrávajú** na server:
-    
-    *   vidno priebeh (progress bar)
-        
-    *   možnosť zrušiť/odstrániť prílohu
-        
-6.  Tlačidlo „Odoslať“ je dostupné až keď sú všetky prílohy úspešne nahrané.
-    
-7.  Po kliknutí na „Odoslať“:
-    
-    *   zobrazí sa **fullscreen overlay**:
-        
-        *   stav _„Odosielam žiadosť…“_
-            
-        *   používateľ **nemusí zostať na stránke** – spracovanie prebieha na pozadí.
-            
-8.  Backend spracuje formulár:
-    
-    *   najprv odošle email firme
-        
-    *   až potom (po úspechu) odošle potvrdenie zákazníkovi
-        
-    *   v prípade chyby odošle zákazníkovi správu o chybe
-        
-9.  **Prílohy sa po odoslaní vždy zmažú** z disku (bez ohľadu na úspech/neúspech).
-    
+﻿**Geotherm – Online Formulár pre Dopyty**
+
+Komplexný systém na odosielanie zákazníckych dopytov vrátane nahrávania príloh, emailových notifikácií, validácie a bezpečnostných opatrení.
+
+**Produkčný testovací server:**\
+<https://geotherm.kikoland.fun>
 
-* * *
+Pripravené na nasadenie na oficiálnu doménu spoločnosti Geotherm Slovakia s.r.o.
 
-🧩 Použité technológie
-----------------------
+-----
+**Obsah**
 
-**Frontend:**
+- Architektúra projektu
+- Funkcionalita z pohľadu používateľa
+- Použité technológie
+- Štruktúra priečinkov
+- Inštalácia – vývojové prostredie
+- Environment variables
+- Spustenie vo vývoji
+- Build a produkčné nasadenie
+- Nginx reverse proxy & SSL
+- Pipeline pre upload súborov
+- Email notifikácie – workflow
+- Bezpečnostné odporúčania
+- Údržba a rozšírenia
+-----
+**Architektúra projektu**
 
-*   React 18+
-    
-*   TypeScript
-    
-*   Vite
-    
-*   TailwindCSS
-    
+**Frontend**
 
-**Backend:**
+- React + TypeScript (Vite)
+- TailwindCSS (dizajn a layout)
+- SPA s pokročilým formulárom (validácia, výber typu stavby, upload príloh, fullscreen overlay)
 
-*   Node.js (LTS)
-    
-*   Express
-    
-*   Nodemailer (SMTP)
-    
-*   Node FS (práca so súbormi)
-    
+**Backend**
 
-**Infra:**
+- Node.js (Express)
+- REST API endpointy:
+  - POST /api/upload
+  - DELETE /api/upload/:id
+  - POST /api/form (alebo /api/submit)
+- Ukladanie príloh na disk (backend/uploads)
+- Odosielanie emailov (SMTP)
+- Automatické mazanie príloh po spracovaní
 
-*   Ubuntu Server
-    
-*   Nginx
-    
-*   systemd
-    
-*   Let’s Encrypt (Certbot)
-    
+**Nasadenie**
 
-* * *
+- Ubuntu Server (self-hosted)
+- Nginx ako reverse proxy
+- systemd služba pre backend
+- Let’s Encrypt (Certbot) – HTTPS certifikáty
+-----
+**Funkcionalita z pohľadu používateľa**
 
-📁 Štruktúra priečinkov
------------------------
+1. Vyplnenie formulára (desktop / mobil).
+1. Voliteľné doplnkové technické údaje.
+1. Pridanie príloh:
+   1. Povolené typy: .pdf, .doc, .docx, .jpg, .jpeg, .png
+   1. Max veľkosť: 1 súbor – **5 MB**, celkovo – **20 MB**
+1. Automatický upload príloh s progresom a možnosťou zrušenia.
+1. Tlačidlo **Odoslať** je aktívne až po úspešnom nahratí všetkých príloh.
+1. Po odoslaní sa zobrazí fullscreen overlay a backend spracuje dáta.
+1. Email je odoslaný firme a následne zákazníkovi.
+1. Všetky prílohy sú zmazané (úspech / neúspech).
+-----
+**Použité technológie**
 
-Približná štruktúra na serveri:
+**Frontend**
 
-bash
+- React 18+
+- TypeScript
+- Vite
+- TailwindCSS
 
-Kopírovať kód
+**Backend**
 
-`/srv/geotherm ├── backend │   ├── server.js │   ├── uploads/           # dočasne nahraté prílohy │   ├── package.json │   └── .env │ ├── frontend │   ├── src/ │   │   └── components/QuoteForm.tsx │   ├── dist/              # build pre produkciu (vite build) │   ├── package.json │   └── .env │ └── README.md`
+- Node.js (LTS)
+- Express
+- Nodemailer
+- Node FS
 
-* * *
+**Infra**
 
-🛠 Inštalácia – vývojové prostredie
------------------------------------
+- Ubuntu Server
+- Nginx
+- systemd
+- Let’s Encrypt (Certbot)
+-----
+**Štruktúra priečinkov**
 
-### 1) Klonovanie repozitára
+/srv/geotherm
 
-bash
+├── backend
 
-Kopírovať kód
+│   ├── server.js
 
-`git clone git@github.com:<USERNAME>/<REPO>.git geotherm-form cd geotherm-form`
+│   ├── uploads/
 
-### 2) Inštalácia závislostí
+│   ├── package.json
 
-**Frontend:**
+│   └── .env
 
-bash
+├── frontend
 
-Kopírovať kód
+│   ├── src/
 
-`cd frontend npm install`
+│   ├── dist/
 
-**Backend:**
+│   ├── package.json
 
-bash
+│   └── .env
 
-Kopírovať kód
+-----
+**Inštalácia – vývojové prostredie**
 
-`cd backend npm install`
+**1. Klonovanie**
 
-* * *
+git clone git@github.com: KristoveNohy/geotherm-form.git geotherm-form
 
-🔧 Environment variables
-------------------------
+cd geotherm-form
 
-### Frontend – `frontend/.env`
+**2. Inštalácia závislostí**
 
-Vo vývoji (lokálne):
+cd frontend && npm install
 
-env
+cd ../backend && npm install
 
-Kopírovať kód
+-----
+**Environment Variables**
 
-`VITE_API_URL=http://localhost:4000/api`
+**Frontend: frontend/.env**
 
-V produkcii (na serveri):
+- Lokálne:
+- VITE\_API\_URL=http://localhost:4000/api
+- Produkcia:
+- VITE\_API\_URL=https://geotherm.kikoland.fun/api
 
-env
+**Backend: backend/.env**
 
-Kopírovať kód
+PORT=4000
 
-`VITE_API_URL=https://geotherm.kikoland.fun/api`
+FRONTEND\_URL=https://geotherm.kikoland.fun
 
-> `VITE_API_URL` ukazuje na **root backend API** (Nginx proxy), na ktorú frontend pridáva `/upload`, `/form`, atď.
+BACKEND\_URL=https://geotherm.kikoland.fun/api
 
-* * *
+SMTP\_HOST=smtp.gmail.com
 
-### Backend – `backend/.env`
+SMTP\_PORT=587
 
-Príklad konfigurácie:
+SMTP\_SECURE=false
 
-env
+SMTP\_USER=xxxxx@gmail.com
 
-Kopírovať kód
+SMTP\_PASS=SMTP\_APP\_PASSWORD
 
-`PORT=4000  # URL frontendu (pre CORS a odkazy v emailoch) FRONTEND_URL=https://geotherm.kikoland.fun  # URL backendu (ak sa používa v emailových template-och) BACKEND_URL=https://geotherm.kikoland.fun/api  # SMTP – odporúčaný vlastný SMTP provider (dočasne Gmail App Password) SMTP_HOST=smtp.gmail.com SMTP_PORT=587 SMTP_SECURE=false SMTP_USER=xxxxx@gmail.com SMTP_PASS=SMTP_APP_PASSWORD  FROM_EMAIL="Geotherm <no-reply@geotherm.sk>"  # Kam sa posielajú dopyty vo firme (CSV zoznam) FIRM_EMAILS="spacinsky@geotherm.sk, niekto.dalsi@geotherm.sk"`
+FROM\_EMAIL="Geotherm <no-reply@geotherm.sk>"
 
-> **Pozor:** Gmail App Password nepatrí do verejného repa. `.env` musí byť v `.gitignore`.
+FIRM\_EMAILS="spacinsky@geotherm.sk, niekto.dalsi@geotherm.sk"
 
-* * *
+.env súbor nesmie byť vo verejnom repozitári!
 
-▶️ Spustenie vo vývoji
-----------------------
+-----
+**Spustenie vo vývoji**
 
-### Backend (lokálne)
+**Backend**
 
-bash
+cd backend
 
-Kopírovať kód
+node server.js
 
-`cd backend npm install node server.js # alebo: nodemon server.js (ak používaš nodemon)`
+\# alebo
 
-Backend beží na `http://localhost:4000`.
+nodemon server.js
 
-### Frontend (lokálne)
+Backend beží na http://localhost:4000
 
-bash
+**Frontend**
 
-Kopírovať kód
+cd frontend
 
-`cd frontend npm install npm run dev`
+npm run dev
 
-Frontend beží na `http://localhost:5173`.
+Frontend beží na http://localhost:5173
 
-V tomto režime musí byť vo FE `.env`:
+-----
+**Build a produkčné nasadenie**
 
-env
+**Frontend**
 
-Kopírovať kód
+cd /srv/geotherm/frontend
 
-`VITE_API_URL=http://localhost:4000/api`
+npm install  # pri prvom nasadení
 
-* * *
+npm run build
 
-📦 Build a produkčné nasadenie
-------------------------------
+**Backend (systemd)**
 
-### Frontend – build
+Súbor: /etc/systemd/system/geotherm-api.service
 
-Na serveri:
+[Unit]
 
-bash
+Description=Geotherm API
 
-Kopírovať kód
+After=network.target
 
-`cd /srv/geotherm/frontend npm install        # pri prvom nasadení npm run build      # vytvorí ./dist`
+[Service]
 
-Výstup `dist/` slúži ako static root pre Nginx.
+WorkingDirectory=/srv/geotherm/backend
 
-### Backend – systemd služba
+ExecStart=/usr/bin/node /srv/geotherm/backend/server.js
 
-Súbor: `/etc/systemd/system/geotherm-api.service`
+Restart=always
 
-ini
+Environment=NODE\_ENV=production
 
-Kopírovať kód
+StandardOutput=journal
 
-`[Unit] Description=Geotherm API After=network.target  [Service] WorkingDirectory=/srv/geotherm/backend ExecStart=/usr/bin/node /srv/geotherm/backend/server.js Restart=always Environment=NODE_ENV=production StandardOutput=journal StandardError=journal User=kristian Group=kristian  [Install] WantedBy=multi-user.target`
+StandardError=journal
 
-Aktivácia:
+User=kristian
 
-bash
+Group=kristian
 
-Kopírovať kód
+[Install]
 
-`sudo systemctl daemon-reload sudo systemctl enable geotherm-api sudo systemctl start geotherm-api sudo systemctl status geotherm-api --no-pager`
+WantedBy=multi-user.target
 
-* * *
+sudo systemctl daemon-reload
 
-🌐 Nginx reverse proxy & SSL
-----------------------------
+sudo systemctl enable geotherm-api
 
-Doména (testovacia):  
-`geotherm.kikoland.fun`
+sudo systemctl start geotherm-api
 
-### HTTP → HTTPS redirect
+-----
+**Nginx reverse proxy & SSL**
 
-nginx
+**HTTP → HTTPS**
 
-Kopírovať kód
+server {
 
-`server {     listen 80;     listen [::]:80;     server_name geotherm.kikoland.fun;      return 301 https://geotherm.kikoland.fun$request_uri; }`
+`    `listen 80;
 
-### HTTPS server block
+`    `server\_name geotherm.kikoland.fun;
 
-nginx
+`    `return 301 https://$host$request\_uri;
 
-Kopírovať kód
+}
 
-`server {     listen 443 ssl http2;     listen [::]:443 ssl http2;     server_name geotherm.kikoland.fun;      ssl_certificate     /etc/letsencrypt/live/geotherm.kikoland.fun/fullchain.pem;     ssl_certificate_key /etc/letsencrypt/live/geotherm.kikoland.fun/privkey.pem;      # Frontend build     root /srv/geotherm/frontend/dist;     index index.html;      # SPA routing     location / {         try_files $uri $uri/ /index.html;     }      # API proxy na backend     location /api/ {         proxy_pass http://127.0.0.1:4000/;         proxy_http_version 1.1;         proxy_set_header Host              $host;         proxy_set_header X-Real-IP         $remote_addr;         proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;         proxy_set_header X-Forwarded-Proto $scheme;         client_max_body_size 30m;          # limit veľkosti requestu (upload)     } }`
+**HTTPS blok**
 
-Po úprave:
+server {
 
-bash
+`    `listen 443 ssl http2;
 
-Kopírovať kód
+`    `server\_name geotherm.kikoland.fun;
 
-`sudo nginx -t sudo systemctl reload nginx`
+`    `ssl\_certificate     /etc/letsencrypt/live/geotherm.kikoland.fun/fullchain.pem;
 
-* * *
+`    `ssl\_certificate\_key /etc/letsencrypt/live/geotherm.kikoland.fun/privkey.pem;
 
-📤 Pipeline pre upload súborov
-------------------------------
+`    `root /srv/geotherm/frontend/dist;
 
-### 1) Frontend
+`    `index index.html;
 
-*   používateľ vyberie súbor(y)
-    
-*   okamžite sa spúšťa **upload na backend** (`POST /api/upload`)
-    
-*   počas nahrávania:
-    
-    *   progress bar (0–100 %)
-        
-    *   možnosť zrušiť upload (abort)
-        
-*   po úspešnom uploade:
-    
-    *   súbor je označený ako „Nahrané“
-        
-    *   do lokálneho state sa uloží ID/meno súboru (pre neskoršie poslanie v payload-e formulára)
-        
-*   tlačidlo „Odoslať formulár“ je aktívne **až keď sú všetky prílohy v stave DONE**
-    
+`    `location / {
 
-### 2) Backend – `/api/upload`
+`        `try\_files $uri $uri/ /index.html;
 
-*   prijme jeden súbor vo ``For(`field: file`)``
-    
-`` *   uloží súbor do `backend/uploads/`      *   vráti JSON:          json          Kopírovať kód          `{   "id": "internal-file-id-or-name",   "url": "/internal/path/or/null" }` ``
+`    `}
 
-``   ### 3) Mazanie súborov  *   pred odoslaním formulára:          *   FE posiela backendu len meta-info (ID nahratých súborov)          *   po spracovaní formulára a emailov:          *   backend prechádza všetky použité súbory a maže ich z `uploads/`              *   rovnako maže súbory aj pri chybovom stave (cleanup)           * * *  📧 Email notifikácie – workflow -------------------------------  1.  **Zákazník odošle formulár**          *   na FE sa zobrazí fullscreen overlay „Odosielam žiadosť…“              *   FE okamžite pošle dáta (bez príloh – tie sú už uložené na serveri)          2.  **Backend spracuje dopyt**          *   zostaví email pre firmu:                  *   všetky vyplnené polia (základ + doplnkové)                      *   prílohy pripojené k emailu                  *   odošle email na adresy z `FIRM_EMAILS`          3.  **Ak je odoslanie firme úspešné:**          *   backend odošle **potvrdzujúci email zákazníkovi** (zhrnutie dopytu)              *   backend zmaže prílohy z disku          4.  **Ak nastane chyba pri odosielaní firme:**          *   backend:                  *   zmaže prílohy z disku                      *   odošle zákazníkovi email, že nastala chyba (skúsiť znova / kontaktovať inak)              5.  **Frontend**          *   podľa odpovede API:                  *   zobrazí overlay **Success** (zelená fajka + text)                      *   alebo **Error** (červený stav + odporúčanie)               * * *  🔒 Bezpečnostné odporúčania ---------------------------  *   SMTP:          *   neodporúča sa dlhodobo používať osobný Gmail              *   odporúčaný prechod na dedikovanú SMTP službu (Mailgun, SendGrid, atď.)          *   Uploady:          *   prípadné doplnenie antivírus kontroly (napr. ClamAV)              *   obmedziť typy a veľkosti súborov (už je nastavené)          *   CORS:          *   povoliť len konkrétne domény (`https://geotherm.sk`, `https://geotherm.kikoland.fun`)          *   HTTPS:          *   pravidelná obnova certifikátov (Certbot vie robiť auto-obnovu)          *   Logy:          *   monitorovať `journalctl -u geotherm-api` pri problémoch           * * *  🧰 Údržba a rozšírenia ----------------------  ### Logy backendu  bash  Kopírovať kód  `journalctl -u geotherm-api -n 100 --no-pager`  ### Aktualizácia aplikácie (manuálne)  Na serveri:  bash  Kopírovať kód  `cd /srv/geotherm git pull origin main  cd backend npm install --omit=dev sudo systemctl restart geotherm-api  cd ../frontend npm install npm run build  sudo systemctl reload nginx`  _(toto je vhodné neskôr zautomatizovať cez GitHub Actions + SSH deploy)_  ### Možné budúce rozšírenia  *   admin rozhranie pre prezeranie dopytov v      *   uloženie dopytov do DB (PostgreSQL/MySQL)      *   PDF export dopytu      *   prepojenie s CRM      *   reCAPTCHA (ochrana proti spam botom)      *   logovanie a monitoring (Sentry, atď.)       * * *  © Licencia / vlastníctvo ------------------------  Projekt vytvorený pre **GEOTHERM Slovakia s.r.o.**   Autor implementácie: **Kristián Lančarič**  Použitie, úpravy a ďalší rozvoj sú v kompetencii firmy Geotherm a jej dodávateľov.   ``
+`    `location /api/ {
+
+`        `proxy\_pass http://127.0.0.1:4000/;
+
+`        `proxy\_http\_version 1.1;
+
+`        `proxy\_set\_header Host $host;
+
+`        `proxy\_set\_header X-Real-IP $remote\_addr;
+
+`        `proxy\_set\_header X-Forwarded-For $proxy\_add\_x\_forwarded\_for;
+
+`        `proxy\_set\_header X-Forwarded-Proto $scheme;
+
+`        `client\_max\_body\_size 30m;
+
+`    `}
+
+}
+
+-----
+**📤 Pipeline pre upload súborov**
+
+1. Upload z FE cez POST /api/upload
+1. Progres a kontrola stavov
+1. Po odoslaní formulára – backend spracuje, pošle email a zmaže prílohy
+-----
+**Email notifikácie – Workflow**
+
+1. Zákazník odošle formulár
+1. Backend:
+   1. Pošle email firme
+   1. Po úspechu pošle potvrdenie zákazníkovi
+   1. V prípade chyby: upozornenie zákazníkovi
+1. Prílohy sú vždy vymazané
+-----
+**Bezpečnostné odporúčania**
+
+- SMTP: odporúčaný prechod z Gmail na Mailgun / SendGrid
+- Uploady: antivírus sken (ClamAV)
+- CORS: povolené domény len geotherm.sk
+- HTTPS: Certbot auto-obnova
+- Monitorovanie: journalctl -u geotherm-api
+-----
+**Údržba a rozšírenia**
+
+**Logy**
+
+journalctl -u geotherm-api -n 100 --no-pager
+
+**Aktualizácia**
+
+cd /srv/geotherm
+
+git pull origin main
+
+cd backend
+
+npm install --omit=dev
+
+sudo systemctl restart geotherm-api
+
+cd ../frontend
+
+npm install
+
+npm run build
+
+sudo systemctl reload nginx
+
+Možná automatizácia cez GitHub Actions
+
+**Budúce rozšírenia**
+
+- Admin rozhranie
+- Ukladanie do DB (PostgreSQL/MySQL)
+- PDF export
+- reCAPTCHA
+- CRM integrácia
+- Logovanie (Sentry)
+-----
+
+Projekt vytvorený pre **GEOTHERM Slovakia s.r.o.**\
+Autor: **Kristián Lančarič**
+
+Použitie, úpravy a ďalší rozvoj sú v kompetencii spoločnosti Geotherm a jej dodávateľov.
+
