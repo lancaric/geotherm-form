@@ -30,8 +30,8 @@ const ALLOWED_FILE_TYPES = [
   "image/jpg",
   "image/png",
 ];
-const MAX_FILE_SIZE = 5 * 1024 * 1024;     // 5 MB / súbor
-const MAX_TOTAL_SIZE = 20 * 1024 * 1024;   // 20 MB spolu
+const MAX_FILE_SIZE = 15 * 1024 * 1024;     // 15 MB / súbor
+const MAX_TOTAL_SIZE = 40 * 1024 * 1024;   // 40 MB spolu
 
 function uploadSingleFile(
   apiUrl: string,
@@ -140,6 +140,7 @@ export default function QuoteForm() {
   }>({ open: false, state: "loading", title: "", subtitle: "" });
 
   const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:4000";
+  const THANK_YOU_URL = "https://www.geotherm.sk/cenova-ponuka/dakujeme-02/";
 
   // === validácie základných povinných polí ===
   const validateField = (name: string, value: any) => {
@@ -259,7 +260,7 @@ export default function QuoteForm() {
         return;
       }
       if (f.size > MAX_FILE_SIZE) {
-        alert(`Súbor ${f.name} je väčší ako 5 MB.`);
+        alert(`Súbor ${f.name} je väčší ako 15 MB.`);
         e.currentTarget.value = "";
         return;
       }
@@ -455,6 +456,14 @@ export default function QuoteForm() {
   const hasDeleting = allUploads.some((u) => u.status === "deleting");
   const canSubmit = !hasUploading && !hasError && !hasDeleting;
 
+  const handleOverlayClose = () => {
+    if (overlay.state === "success") {
+      window.location.href = THANK_YOU_URL;
+      return;
+    }
+    setOverlay((o) => ({ ...o, open: false }));
+  };
+
   // ————————————————————————————— UI —————————————————————————————
   return (
     <div className="min-h-screen bg-slate-100 flex items-center justify-center py-10 px-4">
@@ -462,7 +471,7 @@ export default function QuoteForm() {
         {/* HLAVIČKA */}
         <div className="text-center space-y-2">
           <h1 className="text-2xl md:text-3xl font-semibold text-slate-900">
-            Vyplňte formulár a my vám pripravíme návrh a cenovú ponuku
+            Vyplňte formulár a my vám pripravíme návrh s cenovou ponukou
           </h1>
           <p className="text-sm text-slate-500">vykurovanie · vetranie · chladenie</p>
         </div>
@@ -540,10 +549,6 @@ export default function QuoteForm() {
           <h2 className="text-lg font-medium text-slate-800 border-b border-slate-100 pb-2">
             Informácie o stavbe
           </h2>
-          <p className="text-sm text-slate-500">
-            Riešime vykurovanie ako funkčný celok a používame kvalitné tepelné čerpadlá, cena
-            kotolne sa zvyčajne pohybuje od 9 800 €.
-          </p>
           <div className="flex flex-wrap gap-3">
             <label className="radio">
               <input
@@ -626,9 +631,6 @@ export default function QuoteForm() {
           <h3 className="text-slate-800 font-medium">
             Chcem vyplniť podrobné informácie o stavbe
           </h3>
-          <p className="text-sm text-slate-500">
-            Nepovinné, ale pomôže to pri presnejšej cenovej ponuke.
-          </p>
           <div className="flex flex-wrap gap-4">
             <label className="checkbox">
               <input
@@ -893,7 +895,7 @@ export default function QuoteForm() {
                 accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
               />
               <p className="text-xs text-slate-400 mt-1">
-                Povolené: PDF, DOC, DOCX, JPG, PNG. Max. 5 MB/súbor. Limit spolu 20 MB.
+                Povolené: PDF, DOC, DOCX, JPG, PNG. Max. 15 MB/súbor. Limit spolu 40 MB.
               </p>
 
               {nbUploads.length > 0 && (
@@ -1231,15 +1233,15 @@ export default function QuoteForm() {
                 className="input"
               >
                 <option value="">-</option>
-                <option value="tepelné zem-voda (plošný kolektor)">
-                  tepelné zem-voda (plošný kolektor)
+                <option value="tepelné zem-voda (plošný kolektor) čerpadlo">
+                  tepelné zem-voda (plošný kolektor) čerpadlo
                 </option>
-                <option value="tepelné zem-voda (hlbinný vrt)">
-                  tepelné zem-voda (hlbinný vrt)
+                <option value="tepelné zem-voda (hlbinný vrt) čerpadlo">
+                  tepelné zem-voda (hlbinný vrt) čerpadlo
                 </option>
-                <option value="tepelné voda-voda">tepelné voda-voda</option>
-                <option value="tepelné vzduch-voda">tepelné vzduch-voda</option>
-                <option value="tepelné ventilačné">tepelné ventilačné</option>
+                <option value="tepelné voda-voda čerpadlo">tepelné voda-voda čerpadlo</option>
+                <option value="tepelné vzduch-voda čerpadlo">tepelné vzduch-voda čerpadlo</option>
+                <option value="tepelné ventilačné čerpadlo">tepelné ventilačné čerpadlo</option>
                 <option value="kotol plynový kondenzačný">
                   kotol plynový kondenzačný
                 </option>
@@ -1287,7 +1289,7 @@ export default function QuoteForm() {
                 accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
               />
               <p className="text-xs text-slate-400 mt-1">
-                Povolené: PDF, DOC, DOCX, JPG, PNG. Max. 5 MB/súbor. Limit spolu 20 MB.
+                Povolené: PDF, DOC, DOCX, JPG, PNG. Max. 15 MB/súbor. Limit spolu 40 MB.
               </p>
 
               {recUploads.length > 0 && (
@@ -1369,7 +1371,7 @@ export default function QuoteForm() {
           <button
             type="submit"
             disabled={phase === "submitting" || !canSubmit}
-            className={`w-full inline-flex justify-center items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white font-semibold py-3 rounded-xl transition ${
+            className={`w-full inline-flex justify-center items-center gap-2 bg-[#669613] enabled:hover:bg-[#5a820f] enabled:hover:shadow-lg enabled:hover:-translate-y-0.5 text-white font-semibold py-3 rounded-xl transition-all duration-200 ${
               phase === "submitting" || !canSubmit ? "opacity-80 cursor-not-allowed" : ""
             }`}
           >
@@ -1393,6 +1395,14 @@ export default function QuoteForm() {
             sturdik@geotherm.sk
           </a>
           .
+          <div className="mt-4 flex justify-center">
+            <img
+              src="/logo.png"
+              alt="GEOTHERM logo"
+              className="h-10 w-auto"
+              loading="lazy"
+            />
+          </div>
         </footer>
       </form>
 
@@ -1414,7 +1424,7 @@ export default function QuoteForm() {
         state={overlay.state}
         title={overlay.title}
         subtitle={overlay.subtitle}
-        onClose={() => setOverlay((o) => ({ ...o, open: false }))}
+        onClose={handleOverlayClose}
         onRetry={() => setOverlay((o) => ({ ...o, open: false }))}
       />
     </div>

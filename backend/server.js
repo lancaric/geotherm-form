@@ -81,7 +81,7 @@ const diskStorage = multer.diskStorage({
 });
 const diskUpload = multer({
   storage: diskStorage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB / súbor
+  limits: { fileSize: 15 * 1024 * 1024 }, // 15 MB / súbor
   fileFilter(req, file, cb) {
     if (!okTypes.includes(file.mimetype)) return cb(new Error("Nepovolený typ súboru."));
     cb(null, true);
@@ -241,8 +241,8 @@ app.post("/api/form", async (req, res) => {
     // celkový limit 20 MB (bezpečnostná poistka)
     const uploaded = Array.isArray(data.uploadedFiles) ? data.uploadedFiles : [];
     const totalBytes = uploaded.reduce((s, f) => s + (Number(f.size) || 0), 0);
-    if (totalBytes > 20 * 1024 * 1024) {
-      return res.status(400).json({ success: false, message: "Súbory spolu môžu mať max. 20 MB." });
+    if (totalBytes > 40 * 1024 * 1024) {
+      return res.status(400).json({ success: false, message: "Súbory spolu môžu mať max. 40 MB." });
     }
 
     // attachments (ak ich chceš posielať priamo v e-maile)
@@ -317,6 +317,14 @@ app.post("/api/form", async (req, res) => {
             .join("")}</ul>`
         : "";
 
+    const formType =
+      data.reconstruction === true || data.reconstruction === "true"
+        ? "Rekonštrukcia"
+        : data.newBuild === true || data.newBuild === "true"
+        ? "Novostavba"
+        : "Novostavba";
+    const firmSubject = `GEOTHERM Formulár ${data.name}, ${data.place}, ${formType}`;
+
     const firmHtml = `
       <div style="font-family:Arial,sans-serif;font-size:14px;color:#0f172a">
         <h2 style="margin:0 0 12px">Geotherm – nový dopyt z webu</h2>
@@ -341,7 +349,7 @@ app.post("/api/form", async (req, res) => {
         await transporter.sendMail({
           from: FROM_EMAIL || SMTP_USER,
           to: FIRM_EMAILS || SMTP_USER,
-          subject: "Geotherm – nový dopyt z webového formulára",
+          subject: firmSubject,
           html: firmHtml,
           attachments, // ak chceš len linky: []
         });
@@ -353,9 +361,25 @@ app.post("/api/form", async (req, res) => {
           to: data.email,
           subject: "Vaša požiadavka bola prijatá",
           html: `
-            <p>Dobrý deň, ${data.name},</p>
-            <p>vašu žiadosť sme prijali a čoskoro sa vám ozveme.</p>
-            <p>S pozdravom,<br/>tím Geotherm</p>
+            <div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#0f172a">
+              <p><strong>Dobrý deň p. ${data.name}.</strong></p>
+              <p>Vašu žiadosť sme prijali a čoskoro Vás budeme kontaktovať.</p>
+              <p>Ďakujeme Vám za záujem o naše služby. Ihneď ako to bude možné sa Vám ozveme pre spresnenie informácií na uvedený telefonický kontakt a navrhneme najvhodnejšie riešenie.</p>
+              <p>
+                Ak by ste mali nejaké otázky, <a href="https://www.geotherm.sk/kontakt">kontaktujte nás prosím</a>.
+                Pre informácie o OOU: <a href="https://www.geotherm.sk/o-nas/ochrana-osobnych-udajov/">Ochrana osobných údajov.</a>
+              </p>
+              <p>
+                Ak práve porovnávate viac ponúk a hlava sa vám točí z technických výrazov, naše články vám
+                <strong> ľudskou rečou vysvetlia základné rozdiely a úskalia pri návrhu vykurovania, vetrania a chladenia domu.</strong>
+                <a href="https://www.geotherm.sk/odborne-clanky"> Zobraziť odborné články.</a>
+              </p>
+              <p><strong>GEOTHERM Slovakia – váš partner pre komfortný a úsporný domov</strong></p>
+              <p>Už viac ako 19 rokov navrhujeme a montujeme tepelné čerpadlá Vaillant a NIBE, podlahové vykurovanie, stropné chladenie a vetranie Zehnder, ktoré spolu tvoria tichý a úsporný systém pre váš dom. <strong>Každé riešenie robíme na mieru vášmu domu a štýlu bývania, aby ste mali komfort, nižšie účty a istotu spoľahlivej techniky.</strong></p>
+              <p>S GEOTHERMOM nezískavate len technológiu, ale partnera, ktorému môžete veriť. Viac o nás sa dozviete na: <a href="https://www.geotherm.sk">www.geotherm.sk</a></p>
+              <p>S pozdravom</p>
+              <p><strong>Tím spoločnosti GEOTHERM Slovakia s.r.o.</strong></p>
+            </div>
           `,
         });
         jobs.set(jobId, { status: "sent_user" });
