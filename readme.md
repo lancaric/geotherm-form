@@ -131,9 +131,9 @@ cd ../backend && npm install
 **Frontend: frontend/.env**
 
 - Lokálne:
-- VITE\_API\_URL=http://localhost:4000/api
+- VITE\_API\_URL=http://localhost:4000
 - Produkcia:
-- VITE\_API\_URL=https://geotherm.kikoland.fun/api
+- VITE\_API\_URL=https://geotherm.kikoland.fun
 
 **Backend: backend/.env**
 

@@ -85,10 +85,10 @@ Adresár `/srv/geotherm` bude obsahovať podsložky `frontend/`, `backend/` a bu
    Build sa uloží do `/srv/geotherm/frontend/dist/`.
 2. **Frontend .env:** ak API nie je na `http://localhost:4000`, pridajte súbor `/srv/geotherm/frontend/.env`:
    ```ini
-   VITE_API_URL=https://geotherm.kikoland.fun/api
+   VITE_API_URL=https://geotherm.kikoland.fun
    VITE_TURNSTILE_SITE_KEY=sem-vlozte-sitekey
    ```
-   Hodnota musí smerovať na proxy cestu `/api` (viď Nginx konfiguráciu).
+   Hodnota je základná URL bez `/api`; aplikácia si API cestu doplní sama.
 
 ## 5. Nginx reverse proxy a HTTPS
 1. Vytvorte konfiguráciu `/etc/nginx/sites-available/geotherm` a symlink do `sites-enabled`:
@@ -114,7 +114,7 @@ Adresár `/srv/geotherm` bude obsahovať podsložky `frontend/`, `backend/` a bu
        }
 
        location /api/ {
-           proxy_pass http://127.0.0.1:4000/;
+           proxy_pass http://127.0.0.1:4000;
            proxy_http_version 1.1;
            proxy_set_header Host $host;
            proxy_set_header X-Real-IP $remote_addr;
