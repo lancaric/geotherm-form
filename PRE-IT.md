@@ -252,21 +252,7 @@ Negatívne testy:
 
 Rate limit sa počíta podľa IP adresy a resetuje sa pri reštarte backendu. Pri viacerých Node procesoch je pre spoločný limit potrebné centrálne úložisko, napríklad Redis.
 
-## 8. Aktualizácia a rollback
-
-```bash
-cd "$APP_DIR"
-git rev-parse HEAD
-git pull --ff-only
-cd backend && npm ci --omit=dev && npm test
-cd ../frontend && npm ci && npm run build
-sudo systemctl restart geotherm-api
-sudo nginx -t && sudo systemctl reload nginx
-```
-
-Pred aktualizáciou si zaznamenajte commit z `git rev-parse HEAD`. Pri chybe vráťte predchádzajúci commit firemným deployment postupom, zopakujte `npm ci`, frontend build a reštart backendu. Súbory `.env` neukladajte do Git repozitára ani neposielajte spolu so zdrojovým kódom.
-
-## 9. Najčastejšie chyby
+## 8. Najčastejšie chyby
 
 - **Tlačidlo je neaktívne:** chýba `VITE_TURNSTILE_SITE_KEY`, frontend nebol po zmene rebuildnutý alebo Turnstile blokuje CSP/ad blocker.
 - **HTTP 400 – overenie proti spamu zlyhalo:** nesúhlasí site key a secret key, widget nepovoľuje hostname alebo token expiroval.
