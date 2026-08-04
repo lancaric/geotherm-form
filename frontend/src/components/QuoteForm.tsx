@@ -1,5 +1,15 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import axios from "axios";
+
+declare global {
+  interface Window {
+    turnstile?: {
+      render: (element: HTMLElement, options: Record<string, unknown>) => string;
+      reset: (widgetId?: string) => void;
+      remove: (widgetId: string) => void;
+    };
+  }
+}
 
 type BuildingType = "dom" | "byt" | "objekt" | "";
 type Phase = "idle" | "submitting" | "success" | "error";
@@ -66,6 +76,7 @@ export default function QuoteForm() {
     buildingType: "" as BuildingType,
     installTime: "",
     gdpr: false,
+    hp_company: "",
 
     // voliteľné sekcie (prepínače)
     newBuild: false,
@@ -125,6 +136,10 @@ export default function QuoteForm() {
   // validácia + UI stavy
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [phase, setPhase] = useState<Phase>("idle");
+  const [formStartedAt] = useState(() => Date.now());
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const turnstileContainer = useRef<HTMLDivElement>(null);
+  const turnstileWidgetId = useRef<string | null>(null);
   const [activeExtra, setActiveExtra] = useState<"new" | "recon" | null>(null);
 
   // async job (okamžitá success obrazovka + pozadie)
@@ -140,7 +155,39 @@ export default function QuoteForm() {
   }>({ open: false, state: "loading", title: "", subtitle: "" });
 
   const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:4000";
+  const turnstileSiteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY || "";
   const THANK_YOU_URL = "https://www.geotherm.sk/cenova-ponuka/dakujeme-02/";
+
+  useEffect(() => {
+    if (!turnstileSiteKey || !turnstileContainer.current) return;
+    let cancelled = false;
+    let timer: number | undefined;
+
+    const renderWidget = () => {
+      if (cancelled || !turnstileContainer.current) return;
+      if (!window.turnstile) {
+        timer = window.setTimeout(renderWidget, 100);
+        return;
+      }
+      turnstileWidgetId.current = window.turnstile.render(turnstileContainer.current, {
+        sitekey: turnstileSiteKey,
+        theme: "light",
+        size: "flexible",
+        callback: (token: string) => setTurnstileToken(token),
+        "expired-callback": () => setTurnstileToken(""),
+        "error-callback": () => setTurnstileToken(""),
+      });
+    };
+
+    renderWidget();
+    return () => {
+      cancelled = true;
+      if (timer) window.clearTimeout(timer);
+      if (turnstileWidgetId.current && window.turnstile) {
+        window.turnstile.remove(turnstileWidgetId.current);
+      }
+    };
+  }, [turnstileSiteKey]);
 
   // === validácie základných povinných polí ===
   const validateField = (name: string, value: any) => {
@@ -358,6 +405,16 @@ export default function QuoteForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    if (!turnstileToken) {
+      setOverlay({
+        open: true,
+        state: "error",
+        title: "Overenie proti spamu nie je dokončené",
+        subtitle: "Počkajte na bezpečnostné overenie a skúste formulár odoslať znova.",
+      });
+      return;
+    }
+
     const newErrors = validateAll();
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
@@ -398,7 +455,12 @@ export default function QuoteForm() {
       const res = await fetch(`${apiUrl}/api/form`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, uploadedFiles: uploadedFilesPayload }),
+        body: JSON.stringify({
+          ...form,
+          formStartedAt,
+          turnstileToken,
+          uploadedFiles: uploadedFilesPayload,
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.success) throw new Error(data?.message || "Chyba pri odoslaní formulára.");
@@ -416,6 +478,8 @@ export default function QuoteForm() {
       });
     } catch (err) {
       console.error(err);
+      setTurnstileToken("");
+      if (turnstileWidgetId.current) window.turnstile?.reset(turnstileWidgetId.current);
       setPhase("error");
 
       // pri chybe
@@ -503,6 +567,8 @@ export default function QuoteForm() {
             <input
               type="text"
               name="hp_company"
+              value={form.hp_company}
+              onChange={handleChange}
               tabIndex={-1}
               autoComplete="off"
               className="hidden"
@@ -1368,11 +1434,19 @@ export default function QuoteForm() {
           </label>
           {errors.gdpr && <p className="error-text">{errors.gdpr}</p>}
 
+          {turnstileSiteKey ? (
+            <div ref={turnstileContainer} className="min-h-[65px] flex justify-center" />
+          ) : (
+            <p className="error-text">
+              Chýba konfigurácia ochrany proti spamu (VITE_TURNSTILE_SITE_KEY).
+            </p>
+          )}
+
           <button
             type="submit"
-            disabled={phase === "submitting" || !canSubmit}
+            disabled={phase === "submitting" || !canSubmit || !turnstileToken}
             className={`w-full inline-flex justify-center items-center gap-2 bg-[#669613] enabled:hover:bg-[#5a820f] enabled:hover:shadow-lg enabled:hover:-translate-y-0.5 text-white font-semibold py-3 rounded-xl transition-all duration-200 ${
-              phase === "submitting" || !canSubmit ? "opacity-80 cursor-not-allowed" : ""
+              phase === "submitting" || !canSubmit || !turnstileToken ? "opacity-80 cursor-not-allowed" : ""
             }`}
           >
             {hasUploading

@@ -29,6 +29,12 @@ Adresár `/srv/geotherm` bude obsahovať podsložky `frontend/`, `backend/` a bu
    PORT=4000
    BACKEND_URL=https://geotherm.kikoland.fun       # URL API pre generovanie liniek k uploadom
    FRONTEND_URL=https://geotherm.kikoland.fun      # povolené CORS/CSP
+   TURNSTILE_SECRET_KEY=sem-vlozte-secret-key
+   FORM_RATE_LIMIT=3
+   FORM_RATE_WINDOW_MS=900000
+   UPLOAD_RATE_LIMIT=10
+   UPLOAD_RATE_WINDOW_MS=900000
+   TRUST_PROXY=true                                # iba ak je backend za jedným Nginx proxy
 
    SMTP_HOST=smtp.example.com
    SMTP_PORT=587
@@ -80,6 +86,7 @@ Adresár `/srv/geotherm` bude obsahovať podsložky `frontend/`, `backend/` a bu
 2. **Frontend .env:** ak API nie je na `http://localhost:4000`, pridajte súbor `/srv/geotherm/frontend/.env`:
    ```ini
    VITE_API_URL=https://geotherm.kikoland.fun/api
+   VITE_TURNSTILE_SITE_KEY=sem-vlozte-sitekey
    ```
    Hodnota musí smerovať na proxy cestu `/api` (viď Nginx konfiguráciu).
 

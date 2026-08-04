@@ -16,6 +16,9 @@ import crypto from "crypto";
 dotenv.config();
 
 const app = express();
+const isTest = process.env.NODE_ENV === "test";
+
+if (process.env.TRUST_PROXY === "true") app.set("trust proxy", 1);
 
 /* ---------------- Security (CSP, headers) ---------------- */
 app.use(
@@ -47,13 +50,22 @@ app.use(cors({ origin: true }));
 app.use(express.json({ limit: "1mb" }));
 
 /* ---------------- Rate limit iba na form submit ---------------- */
-const limiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 10,
+const formLimiter = rateLimit({
+  windowMs: Number(process.env.FORM_RATE_WINDOW_MS) || 15 * 60 * 1000,
+  limit: Number(process.env.FORM_RATE_LIMIT) || 3,
   standardHeaders: true,
   legacyHeaders: false,
+  message: { success: false, message: "Príliš veľa pokusov. Skúste to neskôr." },
 });
-app.use("/api/form", limiter);
+const uploadLimiter = rateLimit({
+  windowMs: Number(process.env.UPLOAD_RATE_WINDOW_MS) || 15 * 60 * 1000,
+  limit: Number(process.env.UPLOAD_RATE_LIMIT) || 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: "Príliš veľa uploadov. Skúste to neskôr." },
+});
+app.use("/api/form", formLimiter);
+app.use("/api/upload", uploadLimiter);
 
 /* ---------------- Upload úložisko ---------------- */
 const __filename = fileURLToPath(import.meta.url);
@@ -112,7 +124,7 @@ const {
   RETAIN_UPLOADS, // "true" = nenechávať cleanup po odoslaní (debug)
 } = process.env;
 
-const transporter = nodemailer.createTransport({
+const transporter = nodemailer.createTransport(isTest ? { jsonTransport: true } : {
   host: SMTP_HOST,
   port: Number(SMTP_PORT) || 587,
   secure: SMTP_SECURE === "true",
@@ -159,6 +171,8 @@ const BodySchema = z
     installTime: z.string().optional(),
     gdpr: z.union([z.literal("true"), z.literal(true)]),
     hp_company: z.string().max(0).optional(),
+    formStartedAt: z.number().int().positive(),
+    turnstileToken: z.string().max(2048).optional(),
     uploadedFiles: z
       .array(
         z.object({
@@ -173,6 +187,30 @@ const BodySchema = z
       .optional(),
   })
   .passthrough();
+
+async function verifyTurnstile(token, remoteip) {
+  if (isTest) return token === "test-valid-token";
+  if (!process.env.TURNSTILE_SECRET_KEY || !token) return false;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
+  try {
+    const body = new URLSearchParams({ secret: process.env.TURNSTILE_SECRET_KEY, response: token });
+    if (remoteip) body.set("remoteip", remoteip);
+    const response = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+      method: "POST",
+      body,
+      signal: controller.signal,
+    });
+    const result = await response.json();
+    return response.ok && result.success === true;
+  } catch (error) {
+    console.error("Turnstile verification error:", error?.message || error);
+    return false;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
 const section = (title, obj) =>
   Object.keys(obj).length
@@ -236,6 +274,15 @@ app.post("/api/form", async (req, res) => {
     if (!parsed.success) {
       const msg = parsed.error.issues[0]?.message || "Neplatné údaje.";
       return res.status(400).json({ success: false, message: msg });
+    }
+
+    const formAge = Date.now() - parsed.data.formStartedAt;
+    if (formAge < 3000 || formAge > 2 * 60 * 60 * 1000) {
+      return res.status(400).json({ success: false, message: "Formulár vypršal alebo bol odoslaný príliš rýchlo." });
+    }
+
+    if (!(await verifyTurnstile(parsed.data.turnstileToken, req.ip))) {
+      return res.status(400).json({ success: false, message: "Overenie proti spamu zlyhalo. Skúste to znova." });
     }
 
     // celkový limit 20 MB (bezpečnostná poistka)
@@ -432,4 +479,6 @@ app.get("/api/form-status/:id", (req, res) => {
 
 /* ---------------- Štart ---------------- */
 const port = Number(PORT) || 4000;
-app.listen(port, () => console.log(`✅ Server beží na http://localhost:${port}`));
+if (!isTest) app.listen(port, () => console.log(`✅ Server beží na http://localhost:${port}`));
+
+export { app };
