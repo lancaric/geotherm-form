@@ -166,11 +166,48 @@ sudo nginx -t
 sudo systemctl reload nginx
 ```
 
-Ak certifikát pre subdoménu ešte neexistuje, po správnom nastavení DNS ho možno vytvoriť napríklad pomocou:
+### Expirovaný alebo chýbajúci certifikát
+
+Ak je aktuálny certifikát expirovaný, najprv skontrolujte DNS, systémový čas a certifikáty evidované Certbotom:
+
+```bash
+getent hosts formular.geotherm.sk
+timedatectl status
+sudo certbot certificates
+sudo nginx -t
+```
+
+Ak Certbot certifikát pre `formular.geotherm.sk` eviduje, otestujte obnovu bez vydania ostrého certifikátu a až potom vykonajte obnovu:
+
+```bash
+sudo certbot renew --dry-run
+sudo certbot renew
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+Ak Certbot certifikát neeviduje alebo pôvodná renewal konfigurácia už nie je použiteľná, po správnom nastavení DNS a dostupnosti portu 80 vydajte a nainštalujte nový certifikát:
 
 ```bash
 sudo certbot --nginx -d formular.geotherm.sk
 ```
+
+Nemažte ručne obsah `/etc/letsencrypt`. Po úspešnej oprave overte automatickú obnovu:
+
+```bash
+sudo systemctl status certbot.timer
+sudo systemctl list-timers | grep certbot
+sudo certbot renew --dry-run
+```
+
+Nakoniec overte certifikát, ktorý server skutočne poskytuje navonok:
+
+```bash
+echo | openssl s_client -connect formular.geotherm.sk:443 -servername formular.geotherm.sk 2>/dev/null | openssl x509 -noout -subject -issuer -dates
+curl -Iv https://formular.geotherm.sk
+```
+
+Ak Certbot ukazuje nový certifikát, ale verejná doména stále poskytuje starý, skontrolujte `ssl_certificate`/`ssl_certificate_key` v aktívnom Nginx server bloku, výsledok `sudo nginx -T` a prípadný ďalší proxy alebo load balancer pred serverom.
 
 ## 6. Automatická kontrola
 
