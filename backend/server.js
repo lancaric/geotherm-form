@@ -70,7 +70,7 @@ app.use("/api/upload", uploadLimiter);
 /* ---------------- Upload úložisko ---------------- */
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const UPLOAD_DIR = path.join(__dirname, "uploads");
+const UPLOAD_DIR = path.resolve(process.env.UPLOAD_DIR || path.join(__dirname, "uploads"));
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 app.use("/uploads", express.static(UPLOAD_DIR));
@@ -85,7 +85,9 @@ const okTypes = [
 ];
 
 const diskStorage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, UPLOAD_DIR),
+  destination: (req, file, cb) => {
+    fs.mkdir(UPLOAD_DIR, { recursive: true }, (err) => cb(err, UPLOAD_DIR));
+  },
   filename: (req, file, cb) => {
     const ext = path.extname(file.originalname || "");
     cb(null, `${uuid()}${ext}`);
@@ -95,7 +97,11 @@ const diskUpload = multer({
   storage: diskStorage,
   limits: { fileSize: 15 * 1024 * 1024 }, // 15 MB / súbor
   fileFilter(req, file, cb) {
-    if (!okTypes.includes(file.mimetype)) return cb(new Error("Nepovolený typ súboru."));
+    if (!okTypes.includes(file.mimetype)) {
+      const error = new Error("Nepovolený typ súboru. Povolené sú PDF, DOC, DOCX, JPG a PNG.");
+      error.code = "UNSUPPORTED_FILE_TYPE";
+      return cb(error);
+    }
     cb(null, true);
   },
 });
@@ -228,20 +234,39 @@ const section = (title, obj) =>
     : "";
 
 /* ---------------- API: upload jednej prílohy ---------------- */
-app.post("/api/upload", diskUpload.single("file"), (req, res) => {
-  const f = req.file;
-  if (!f) return res.status(400).json({ success: false, message: "Súbor sa neuložil." });
+const uploadSingle = diskUpload.single("file");
+app.post("/api/upload", (req, res) => {
+  uploadSingle(req, res, (err) => {
+    if (err) {
+      if (err.code === "LIMIT_FILE_SIZE") {
+        return res.status(413).json({ success: false, message: "Súbor je príliš veľký. Maximum je 15 MB na súbor." });
+      }
+      if (err.code === "UNSUPPORTED_FILE_TYPE") {
+        return res.status(415).json({ success: false, message: err.message });
+      }
+      if (err instanceof multer.MulterError) {
+        return res.status(400).json({ success: false, message: "Neplatná požiadavka na nahratie prílohy." });
+      }
+      console.error("Upload error:", err);
+      return res.status(500).json({
+        success: false,
+        message: "Server nedokázal uložiť prílohu. Skúste nahrávanie znova alebo nás kontaktujte.",
+      });
+    }
+    const f = req.file;
+    if (!f) return res.status(400).json({ success: false, message: "Súbor sa neuložil." });
 
-  const filename = path.basename(f.path);
-  const fileRef = {
-    filename,
-    originalname: f.originalname,
-    mimetype: f.mimetype,
-    size: f.size,
-    path: f.path,
-    url: `${BACKEND_URL || ""}/uploads/${filename}`,
-  };
-  return res.status(200).json({ success: true, file: fileRef });
+    const filename = path.basename(f.path);
+    const fileRef = {
+      filename,
+      originalname: f.originalname,
+      mimetype: f.mimetype,
+      size: f.size,
+      path: f.path,
+      url: `${BACKEND_URL || ""}/uploads/${filename}`,
+    };
+    return res.status(200).json({ success: true, file: fileRef });
+  });
 });
 
 /* ---------------- API: zmazanie nahratého súboru ---------------- */
@@ -285,7 +310,7 @@ app.post("/api/form", async (req, res) => {
       return res.status(400).json({ success: false, message: "Overenie proti spamu zlyhalo. Skúste to znova." });
     }
 
-    // celkový limit 20 MB (bezpečnostná poistka)
+    // celkový limit 40 MB (bezpečnostná poistka)
     const uploaded = Array.isArray(data.uploadedFiles) ? data.uploadedFiles : [];
     const totalBytes = uploaded.reduce((s, f) => s + (Number(f.size) || 0), 0);
     if (totalBytes > 40 * 1024 * 1024) {

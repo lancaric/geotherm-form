@@ -113,16 +113,18 @@ sudo systemctl enable --now geotherm-api
 sudo systemctl status geotherm-api
 ```
 
+Ak služba používa iného používateľa než `www-data`, nastavte vlastníka adresára podľa hodnoty `User=` v službe. Voliteľná premenná `UPLOAD_DIR` umožňuje nastaviť inú absolútnu cestu úložiska.
+
 ## 4. Frontend
 
 Vytvorte `<APP_DIR>/frontend/.env.production`:
 
 ```ini
-VITE_API_URL=https://formular.geotherm.sk
+VITE_API_URL=/api
 VITE_TURNSTILE_SITE_KEY=PRODUKCNY_SITE_KEY
 ```
 
-`VITE_API_URL` je základná URL bez koncového `/api`. Aplikácia si `/api/form` a `/api/upload` doplní sama. Premenné Vite sa vložia do JavaScriptu počas buildu, preto po každej zmene `.env.production` treba frontend znovu zostaviť.
+`VITE_API_URL=/api` smeruje na API na rovnakej doméne. Podporované sú aj hodnoty `https://formular.geotherm.sk` a `https://formular.geotherm.sk/api`; aplikácia pridáva prefix `/api` iba raz. Bez nastavenia používa produkcia `/api` a vývoj `http://localhost:4000/api`. Premenné Vite sa vložia do JavaScriptu počas buildu, preto po každej zmene `.env.production` treba frontend znovu zostaviť.
 
 ```bash
 cd "$APP_DIR/frontend"
@@ -158,6 +160,8 @@ server {
 ```
 
 Pri `proxy_pass` zámerne nie je koncové `/`; backend musí dostať pôvodnú cestu `/api/...`.
+
+Pri aktualizácii staršieho nasadenia skontrolujte skutočnú konfiguráciu cez `sudo nginx -T`. Ak obsahuje `proxy_pass http://127.0.0.1:4000/;`, odstráňte koncové `/` súčasne s nasadením opraveného frontendu. Verejné požiadavky majú smerovať na `/api/upload` a `/api/form`, bez dvojitého `/api/api`.
 
 Ak server nastavuje vlastnú Content Security Policy, povoľte `https://challenges.cloudflare.com` v `script-src`, `frame-src` a `connect-src`. Neupravujte ju pridaním druhého konfliktného CSP headera; Cloudflare zdroj doplňte do aktuálnej politiky.
 
@@ -218,10 +222,11 @@ cd "$APP_DIR/backend"
 npm test
 ```
 
-Očakávaný výsledok je `5 pass, 0 fail`.
+Očakávaný výsledok je `13 pass, 0 fail`. Testy zahŕňajú ochranu proti spamu, upload a mazanie príloh, limit veľkosti, chyby úložiska a obmedzenie počtu požiadaviek. Upload testy používajú dočasný adresár.
 
 ```bash
 cd "$APP_DIR/frontend"
+npm test
 npm run build
 sudo systemctl status geotherm-api
 curl -i http://127.0.0.1:4000/api/form
@@ -234,7 +239,7 @@ GET na `/api/form` môže vrátiť 404; týmto sa iba overuje, že backend odpov
 
 1. Otvorte produkčnú stránku v anonymnom okne.
 2. V Developer Tools → Network skontrolujte načítanie `challenges.cloudflare.com` bez CSP chyby.
-3. Vyplňte formulár testovacími údajmi a malou prílohou.
+3. Vyplňte formulár testovacími údajmi a malou prílohou. Overte, že `POST /api/upload` vráti HTTP 200 a pri prílohe sa zobrazí potvrdenie nahratia.
 4. Skontrolujte, že `POST /api/form` vráti HTTP 200 a `success: true`.
 5. Overte prijatie e-mailu firmou aj potvrdzujúceho e-mailu zákazníkom.
 6. Počas testu sledujte:
@@ -249,6 +254,7 @@ Negatívne testy:
 - zablokovanie `challenges.cloudflare.com` musí znemožniť odoslanie,
 - viac než tri odoslania z rovnakej IP za 15 minút má vrátiť HTTP 429,
 - požiadavka bez Turnstile tokenu musí vrátiť HTTP 400 a nesmie odoslať email.
+- pri neúspešnom nahratí sa pri prílohe zobrazí dôvod; overte jej odstránenie aj tlačidlo **Skúsiť nahrať znova**.
 
 Rate limit sa počíta podľa IP adresy a resetuje sa pri reštarte backendu. Pri viacerých Node procesoch je pre spoločný limit potrebné centrálne úložisko, napríklad Redis.
 
@@ -256,7 +262,10 @@ Rate limit sa počíta podľa IP adresy a resetuje sa pri reštarte backendu. Pr
 
 - **Tlačidlo je neaktívne:** chýba `VITE_TURNSTILE_SITE_KEY`, frontend nebol po zmene rebuildnutý alebo Turnstile blokuje CSP/ad blocker.
 - **HTTP 400 – overenie proti spamu zlyhalo:** nesúhlasí site key a secret key, widget nepovoľuje hostname alebo token expiroval.
-- **HTTP 404 na POST:** `VITE_API_URL` obsahuje `/api`, prípadne Nginx odstraňuje prefix `/api` kvôli koncovému `/` v `proxy_pass`.
+- **HTTP 404 na POST:** skontrolujte `VITE_API_URL` a zachovanie prefixu `/api` v Nginx. Ak požiadavka stále obsahuje `/api/api`, overte nasadenie nového frontend buildu a cache prehliadača.
+- **HTTP 413 pri uploade:** limit je 15 MB na súbor a 40 MB spolu vo formulári; skontrolujte tiež `client_max_body_size` v aktívnej konfigurácii Nginx.
+- **HTTP 415 pri uploade:** povolené sú iba PDF, DOC, DOCX, JPG a PNG.
+- **HTTP 500 pri uploade:** pozrite `sudo journalctl -u geotherm-api -n 80 --no-pager` a záznam `Upload error:`. Skontrolujte právo zápisu používateľa služby do úložiska (`EACCES`) a voľné miesto na disku (`ENOSPC`). Samotné hlásenie 500 v konzole nestačí na určenie príčiny. Backend vracia chybu v JSON odpovedi a formulár ju zobrazí pri prílohe.
 - **Všetci používatelia dostávajú HTTP 429:** nesprávne nastavený `TRUST_PROXY` alebo Nginx neposiela `X-Forwarded-For`.
 - **Email nepríde:** skontrolujte SMTP údaje, spam priečinok a `journalctl -u geotherm-api`.
 

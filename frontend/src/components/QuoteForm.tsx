@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import axios from "axios";
+import { resolveApiBaseUrl } from "../api";
 
 declare global {
   interface Window {
@@ -30,6 +31,7 @@ type UploadItem = {
   status: UploadStatus;
   controller?: AbortController;
   server?: ServerFile;
+  error?: string;
 };
 
 const ALLOWED_FILE_TYPES = [
@@ -52,7 +54,7 @@ function uploadSingleFile(
   const fd = new FormData();
   fd.append("file", file);
   return axios
-    .post(`${apiUrl}/api/upload`, fd, {
+    .post(`${apiUrl}/upload`, fd, {
       signal: controller.signal,
       onUploadProgress: (e) => {
         if (!e.total) return;
@@ -64,6 +66,21 @@ function uploadSingleFile(
       if (!r.data?.success) throw new Error("Upload sa nepodaril");
       return r.data.file as ServerFile;
     });
+}
+
+function uploadErrorMessage(error: unknown): string {
+  if (axios.isAxiosError<{ message?: unknown }>(error)) {
+    const message = error.response?.data?.message;
+    if (typeof message === "string" && message.trim()) return message;
+    if (error.response?.status === 413) return "Súbor je príliš veľký. Maximum je 15 MB na súbor.";
+    if (error.response?.status === 429) return "Príliš veľa nahrávaní. Skúste to neskôr.";
+    if (error.response?.status === 404) return "Nahrávanie nie je dostupné. Kontaktujte nás prosím.";
+    if (error.response && error.response.status >= 500) {
+      return "Server nedokázal uložiť prílohu. Skúste nahrávanie znova alebo nás kontaktujte.";
+    }
+    if (!error.response) return "Nepodarilo sa spojiť so serverom. Skontrolujte pripojenie a skúste znova.";
+  }
+  return "Prílohu sa nepodarilo nahrať. Skúste nahrávanie znova.";
 }
 
 export default function QuoteForm() {
@@ -154,7 +171,7 @@ export default function QuoteForm() {
     subtitle?: string;
   }>({ open: false, state: "loading", title: "", subtitle: "" });
 
-  const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:4000";
+  const apiUrl = resolveApiBaseUrl(import.meta.env.VITE_API_URL, import.meta.env.DEV);
   const turnstileSiteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY || "";
   const THANK_YOU_URL = "https://www.geotherm.sk/cenova-ponuka/dakujeme-02/";
 
@@ -279,9 +296,36 @@ export default function QuoteForm() {
     }
   };
 
-  // === výpočet už nahratej veľkosti (pre 20 MB limit) ===
+  // === výpočet veľkosti všetkých vybraných príloh ===
   const currentTotalBytes = () =>
     [...nbUploads, ...recUploads].reduce((s, u) => s + (u.file?.size || 0), 0);
+
+  const startUpload = (item: UploadItem, target: "nb" | "rec") => {
+    const setUploads = target === "nb" ? setNbUploads : setRecUploads;
+    uploadSingleFile(apiUrl, item.file, item.controller!, (progress) => {
+      setUploads((prev) => prev.map((x) => x.localId === item.localId ? { ...x, progress } : x));
+    })
+      .then((server) => {
+        setUploads((prev) => prev.map((x) => x.localId === item.localId
+          ? { ...x, status: "done", progress: 100, server, error: undefined } : x));
+      })
+      .catch((error: unknown) => {
+        if (axios.isCancel(error)) return;
+        setUploads((prev) => prev.map((x) => x.localId === item.localId
+          ? { ...x, status: "error", error: uploadErrorMessage(error) } : x));
+      });
+  };
+
+  const handleRetryUpload = (localId: string, target: "nb" | "rec") => {
+    const item = (target === "nb" ? nbUploads : recUploads).find((x) => x.localId === localId);
+    if (!item || item.status !== "error") return;
+    const retry: UploadItem = {
+      ...item, status: "uploading", progress: 0, error: undefined, controller: new AbortController(),
+    };
+    const setUploads = target === "nb" ? setNbUploads : setRecUploads;
+    setUploads((prev) => prev.map((x) => x.localId === localId ? retry : x));
+    startUpload(retry, target);
+  };
 
   // === pridanie súborov (validácie + spustenie uploadu s percentami) ===
   const handleAddFiles = (
@@ -291,15 +335,15 @@ export default function QuoteForm() {
     const files = e.target.files ? Array.from(e.target.files) : [];
     if (!files.length) return;
 
-    // FE limit 20 MB spolu (pred uploadom)
+    // FE limit 40 MB spolu (pred uploadom)
     const newFilesTotal = files.reduce((s, f) => s + f.size, 0);
     if (currentTotalBytes() + newFilesTotal > MAX_TOTAL_SIZE) {
-      alert("Celkový limit príloh je 20 MB. Zmenšite alebo odstráňte niektoré súbory.");
+      alert("Celkový limit príloh je 40 MB. Zmenšite alebo odstráňte niektoré súbory.");
       e.currentTarget.value = "";
       return;
     }
 
-    // typ + 5 MB / súbor
+    // typ + 15 MB / súbor
     for (const f of files) {
       if (!ALLOWED_FILE_TYPES.includes(f.type)) {
         alert("Povolené formáty: PDF, DOC, DOCX, JPG, PNG.");
@@ -330,46 +374,7 @@ export default function QuoteForm() {
     if (target === "nb") setNbUploads((prev) => [...prev, ...items]);
     else setRecUploads((prev) => [...prev, ...items]);
 
-    items.forEach((item) => {
-      uploadSingleFile(apiUrl, item.file, item.controller!, (pct) => {
-        if (target === "nb") {
-          setNbUploads((prev) =>
-            prev.map((x) => (x.localId === item.localId ? { ...x, progress: pct } : x))
-          );
-        } else {
-          setRecUploads((prev) =>
-            prev.map((x) => (x.localId === item.localId ? { ...x, progress: pct } : x))
-          );
-        }
-      })
-        .then((serverFile) => {
-          if (target === "nb") {
-            setNbUploads((prev) =>
-              prev.map((x) =>
-                x.localId === item.localId ? { ...x, status: "done", progress: 100, server: serverFile } : x
-              )
-            );
-          } else {
-            setRecUploads((prev) =>
-              prev.map((x) =>
-                x.localId === item.localId ? { ...x, status: "done", progress: 100, server: serverFile } : x
-              )
-            );
-          }
-        })
-        .catch((err) => {
-          if (axios.isCancel?.(err) || err?.name === "CanceledError") return;
-          if (target === "nb") {
-            setNbUploads((prev) =>
-              prev.map((x) => (x.localId === item.localId ? { ...x, status: "error" } : x))
-            );
-          } else {
-            setRecUploads((prev) =>
-              prev.map((x) => (x.localId === item.localId ? { ...x, status: "error" } : x))
-            );
-          }
-        });
-    });
+    items.forEach((item) => startUpload(item, target));
 
     e.currentTarget.value = "";
   };
@@ -379,6 +384,12 @@ export default function QuoteForm() {
     const list = target === "nb" ? nbUploads : recUploads;
     const item = list.find((x) => x.localId === localId);
     if (!item) return;
+
+    if (item.status === "error" || item.status === "idle") {
+      const setUploads = target === "nb" ? setNbUploads : setRecUploads;
+      setUploads((prev) => prev.filter((x) => x.localId !== localId));
+      return;
+    }
 
     // zrušenie rozbehnutého uploadu
     if (item.status === "uploading" && item.controller) {
@@ -394,7 +405,7 @@ export default function QuoteForm() {
       else setRecUploads((prev) => prev.map((x) => (x.localId === localId ? { ...x, status: "deleting" } : x)));
 
       try {
-        await fetch(`${apiUrl}/api/upload/${encodeURIComponent(item.server.filename)}`, { method: "DELETE" });
+        await fetch(`${apiUrl}/upload/${encodeURIComponent(item.server.filename)}`, { method: "DELETE" });
       } catch {}
       if (target === "nb") setNbUploads((prev) => prev.filter((x) => x.localId !== localId));
       else setRecUploads((prev) => prev.filter((x) => x.localId !== localId));
@@ -431,9 +442,9 @@ export default function QuoteForm() {
     if (hasError) { alert("Jedna alebo viac príloh sa nepodarilo nahrať. Odstráňte ich alebo skúste znova."); return; }
     if (hasDeleting) { alert("Príloha sa odstraňuje. Skúste odoslať o chvíľu."); return; }
 
-    // FE poistka 20 MB spolu
+    // FE poistka 40 MB spolu
     if (currentTotalBytes() > MAX_TOTAL_SIZE) {
-      alert("Celkový limit príloh je 20 MB.");
+      alert("Celkový limit príloh je 40 MB.");
       return;
     }
 
@@ -452,7 +463,7 @@ export default function QuoteForm() {
 
       setPhase("submitting");
 
-      const res = await fetch(`${apiUrl}/api/form`, {
+      const res = await fetch(`${apiUrl}/form`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -497,7 +508,7 @@ export default function QuoteForm() {
     if (!jobId) return;
     const t = setInterval(async () => {
       try {
-        const r = await fetch(`${apiUrl}/api/form-status/${jobId}`);
+        const r = await fetch(`${apiUrl}/form-status/${jobId}`);
         const j = await r.json();
         if (j?.success && j?.status) {
           setJobStatus(j.status);
@@ -995,7 +1006,12 @@ export default function QuoteForm() {
                         <span className="text-emerald-600 text-sm">✓</span>
                       )}
                       {u.status === "error" && (
-                        <span className="text-red-600 text-sm">✕</span>
+                        <div className="min-w-0 text-red-600 text-xs" role="alert">
+                          <p>{u.error}</p>
+                          <button type="button" className="underline" onClick={() => handleRetryUpload(u.localId, "nb")}>
+                            Skúsiť nahrať znova
+                          </button>
+                        </div>
                       )}
                       {u.status === "deleting" && (
                         <span className="text-slate-400 text-xs">odstraňujem…</span>
@@ -1389,7 +1405,12 @@ export default function QuoteForm() {
                         <span className="text-emerald-600 text-sm">✓</span>
                       )}
                       {u.status === "error" && (
-                        <span className="text-red-600 text-sm">✕</span>
+                        <div className="min-w-0 text-red-600 text-xs" role="alert">
+                          <p>{u.error}</p>
+                          <button type="button" className="underline" onClick={() => handleRetryUpload(u.localId, "rec")}>
+                            Skúsiť nahrať znova
+                          </button>
+                        </div>
                       )}
                       {u.status === "deleting" && (
                         <span className="text-slate-400 text-xs">odstraňujem…</span>

@@ -56,7 +56,7 @@ Pripravené na nasadenie na oficiálnu doménu spoločnosti Geotherm Slovakia s.
 1. Voliteľné doplnkové technické údaje.
 1. Pridanie príloh:
    1. Povolené typy: .pdf, .doc, .docx, .jpg, .jpeg, .png
-   1. Max veľkosť: 1 súbor – **5 MB**, celkovo – **20 MB**
+   1. Max veľkosť: 1 súbor – **15 MB**, celkovo – **40 MB**
 1. Automatický upload príloh s progresom a možnosťou zrušenia.
 1. Tlačidlo **Odoslať** je aktívne až po úspešnom nahratí všetkých príloh.
 1. Po odoslaní sa zobrazí fullscreen overlay a backend spracuje dáta.
@@ -133,7 +133,9 @@ cd ../backend && npm install
 - Lokálne:
 - VITE\_API\_URL=http://localhost:4000
 - Produkcia:
-- VITE\_API\_URL=https://geotherm.kikoland.fun
+- VITE\_API\_URL=/api
+
+Frontend podporuje aj absolútnu URL s koncovým `/api` alebo bez neho. Prefix `/api` pridáva iba raz. Nastavenie sa načítava pri `npm run build`. Aktuálny produkčný postup a diagnostika uploadov sú v [PRE-IT.md](PRE-IT.md).
 
 **Backend: backend/.env**
 
@@ -141,7 +143,7 @@ PORT=4000
 
 FRONTEND\_URL=https://geotherm.kikoland.fun
 
-BACKEND\_URL=https://geotherm.kikoland.fun/api
+BACKEND\_URL=https://geotherm.kikoland.fun
 
 SMTP\_HOST=smtp.gmail.com
 
@@ -270,7 +272,7 @@ server {
 
 `    `location /api/ {
 
-`        `proxy\_pass http://127.0.0.1:4000/;
+`        `proxy\_pass http://127.0.0.1:4000;
 
 `        `proxy\_http\_version 1.1;
 
