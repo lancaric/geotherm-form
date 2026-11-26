@@ -157,6 +157,9 @@ export default function QuoteForm() {
   const [turnstileToken, setTurnstileToken] = useState("");
   const turnstileContainer = useRef<HTMLDivElement>(null);
   const turnstileWidgetId = useRef<string | null>(null);
+  const redirectTimer = useRef<number | null>(null);
+  const submitController = useRef<AbortController | null>(null);
+  const submittingRef = useRef(false);
   const [activeExtra, setActiveExtra] = useState<"new" | "recon" | null>(null);
 
   // async job (okamžitá success obrazovka + pozadie)
@@ -416,6 +419,8 @@ export default function QuoteForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    if (submittingRef.current) return;
+
     if (!turnstileToken) {
       setOverlay({
         open: true,
@@ -458,21 +463,33 @@ export default function QuoteForm() {
         open: true,
         state: "loading",
         title: "Odosielam žiadosť…",
-        subtitle: "Spracovanie prebieha na pozadí. Môžete stránku zavrieť.",
+        subtitle: "Prosím, nezatvárajte stránku.",
       });
 
       setPhase("submitting");
+      submittingRef.current = true;
 
-      const res = await fetch(`${apiUrl}/form`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...form,
-          formStartedAt,
-          turnstileToken,
-          uploadedFiles: uploadedFilesPayload,
-        }),
-      });
+      const controller = new AbortController();
+      submitController.current = controller;
+      const timeoutId = window.setTimeout(() => controller.abort(), 15000);
+
+      let res: Response;
+      try {
+        res = await fetch(`${apiUrl}/form`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...form,
+            formStartedAt,
+            turnstileToken,
+            uploadedFiles: uploadedFilesPayload,
+          }),
+          signal: controller.signal,
+        });
+      } finally {
+        window.clearTimeout(timeoutId);
+      }
+
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.success) throw new Error(data?.message || "Chyba pri odoslaní formulára.");
 
@@ -480,20 +497,24 @@ export default function QuoteForm() {
       setJobStatus("pending");
       setPhase("success");
 
-      // po úspechu
       setOverlay({
         open: true,
         state: "success",
-        title: "Žiadosť prijatá ",
-        subtitle: "Email sa odosiela do firmy. Potvrdzujúci email dostanete po úspešnom doručení.",
+        title: "Žiadosť prijatá",
+        subtitle: "Vašu správu sme úspešne prijali. Ďakujeme za váš záujem. Presmerujeme vás na potvrdzovaciu stránku.",
       });
+
+      if (redirectTimer.current !== null) window.clearTimeout(redirectTimer.current);
+      redirectTimer.current = window.setTimeout(() => {
+        window.location.replace(THANK_YOU_URL);
+      }, 1500);
     } catch (err) {
+      submittingRef.current = false;
       console.error(err);
       setTurnstileToken("");
       if (turnstileWidgetId.current) window.turnstile?.reset(turnstileWidgetId.current);
       setPhase("error");
 
-      // pri chybe
       setOverlay({
         open: true,
         state: "error",
@@ -524,6 +545,15 @@ export default function QuoteForm() {
     document.body.style.overflow = overlay.open ? "hidden" : "";
   }, [overlay.open]);
 
+  useEffect(() => {
+    return () => {
+      submitController.current?.abort();
+      if (redirectTimer.current !== null) {
+        window.clearTimeout(redirectTimer.current);
+      }
+    };
+  }, []);
+
   const isBusy = phase === "submitting";
   const allUploads = [...nbUploads, ...recUploads];
   const hasUploading = allUploads.some((u) => u.status === "uploading");
@@ -532,10 +562,6 @@ export default function QuoteForm() {
   const canSubmit = !hasUploading && !hasError && !hasDeleting;
 
   const handleOverlayClose = () => {
-    if (overlay.state === "success") {
-      window.location.href = THANK_YOU_URL;
-      return;
-    }
     setOverlay((o) => ({ ...o, open: false }));
   };
 
@@ -1465,9 +1491,9 @@ export default function QuoteForm() {
 
           <button
             type="submit"
-            disabled={phase === "submitting" || !canSubmit || !turnstileToken}
+            disabled={phase === "submitting" || phase === "success" || !canSubmit || !turnstileToken}
             className={`w-full inline-flex justify-center items-center gap-2 bg-[#669613] enabled:hover:bg-[#5a820f] enabled:hover:shadow-lg enabled:hover:-translate-y-0.5 text-white font-semibold py-3 rounded-xl transition-all duration-200 ${
-              phase === "submitting" || !canSubmit || !turnstileToken ? "opacity-80 cursor-not-allowed" : ""
+              phase === "submitting" || phase === "success" || !canSubmit || !turnstileToken ? "opacity-80 cursor-not-allowed" : ""
             }`}
           >
             {hasUploading
@@ -1580,15 +1606,7 @@ function FullScreenStatusOverlay({
         {subtitle && <p className="mb-5 text-sm text-gray-600">{subtitle}</p>}
 
         <div className="flex justify-center gap-2">
-          {state === "loading" ? null : state === "success" ? (
-            <button
-              onClick={onClose}
-              className="inline-flex rounded-lg bg-emerald-600 px-4 py-2 text-white hover:bg-emerald-700"
-              autoFocus
-            >
-              OK, rozumiem
-            </button>
-          ) : (
+          {state === "loading" ? null : state === "success" ? null : (
             <>
               <button
                 onClick={onRetry}

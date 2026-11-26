@@ -23,6 +23,7 @@ Pripravené na nasadenie na oficiálnu doménu spoločnosti Geotherm Slovakia s.
 - Email notifikácie – workflow
 - Bezpečnostné odporúčania
 - Údržba a rozšírenia
+- GTM a presmerovanie formulára
 -----
 **Architektúra projektu**
 
@@ -350,6 +351,26 @@ Možná automatizácia cez GitHub Actions
 - reCAPTCHA
 - CRM integrácia
 - Logovanie (Sentry)
+-----
+**GTM a presmerovanie formulára**
+
+- GTM Container ID: `GTM-PC774CDD`
+- Zdroj integrácie: `frontend/index.html`
+- Cieľ po úspešnom API `/api/form`: `https://www.geotherm.sk/cenova-ponuka/dakujeme-02/`
+- Presmerovanie prebehne 1500 ms po odpovedi backendu s `success: true`.
+- Osobné údaje formulára sa neposielajú do `dataLayer` ani GTM.
+- `dist/` sa neupravuje priamo; produkčné HTML sa generuje príkazom `npm run build`.
+
+**CSP**
+
+Existujúca HTTP odpoveď produkčného Nginx neobsahovala CSP header. Backendový Helmet CSP sa uplatňuje iba na API odpovede Express a backend neobsluhuje frontendový HTML dokument. Preto sa `backend/server.js` v tejto úlohe nemenil. Ak administrátor aplikuje CSP na `formular.geotherm.sk` na Nginx/reverse proxy, musí povoliť inline GTM alebo použiť vhodný hash/nonce a domény GTM, Google merania a Cloudflare Turnstile. CSP sa nemá duplikovať viacerými headerami.
+
+**Nasadenie a rollback**
+
+1. Vytvoriť zálohu: `tar -czf /tmp/geotherm-form-backup-$(date +%F-%H%M).tgz /srv/geotherm/frontend/dist /srv/geotherm/backend/server.js`
+2. Na vetve `feature/gtm-form-redirect` vykonať review diffu a commit.
+3. Po explicitnom schválení nasadiť nový build a backend, prípadne reštartovať službu.
+4. Rollback: obnoviť predchádzajúcu verziu `dist/` a `server.js`, reštartovať backend a overiť aplikáciu.
 -----
 
 Projekt vytvorený pre **GEOTHERM Slovakia s.r.o.**\
