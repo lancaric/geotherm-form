@@ -28,12 +28,16 @@ test("integrates GTM once and preserves dataLayer", async () => {
   assert.match(html, /googletagmanager\.com\/ns\.html/);
   assert.match(html, /'dataLayer'/);
 });
-test("redirect occurs only after successful API response", async () => {
+test("redirect follows successful API response while the loading overlay remains", async () => {
   const source = await readFile(new URL("../src/components/QuoteForm.tsx", import.meta.url), "utf8");
-  assert.match(source, /if \(!res\.ok \|\| !data\?\.success\)/);
+  const responseCheck = source.indexOf("if (!res.ok || !data?.success)");
+  const redirectTimer = source.indexOf("redirectTimer.current = window.setTimeout");
+  assert(responseCheck >= 0);
+  assert(redirectTimer > responseCheck);
   assert.match(source, /window\.location\.replace\(THANK_YOU_URL\)/);
   assert.match(source, /, 1500\)/);
+  assert.match(source, /title: "Odosielam žiadosť…"/);
   assert.match(source, /Prosím, nezatvárajte stránku\./);
-  assert.match(source, /Vašu správu sme úspešne prijali/);
+  assert.doesNotMatch(source, /state: "success"/);
   assert.doesNotMatch(source, /OK, rozumiem/);
 });

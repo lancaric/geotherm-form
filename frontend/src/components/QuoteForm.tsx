@@ -168,7 +168,7 @@ export default function QuoteForm() {
   // overlay stav
   const [overlay, setOverlay] = useState<{
     open: boolean;
-    state: "loading" | "success" | "error";
+    state: "loading" | "error";
     title: string;
     subtitle?: string;
   }>({ open: false, state: "loading", title: "", subtitle: "" });
@@ -485,13 +485,6 @@ export default function QuoteForm() {
       setJobId(data.jobId || null);
       setJobStatus("pending");
       setPhase("success");
-
-      setOverlay({
-        open: true,
-        state: "success",
-        title: "Žiadosť prijatá",
-        subtitle: "Vašu správu sme úspešne prijali. Ďakujeme za váš záujem. Presmerujeme vás na potvrdzovaciu stránku.",
-      });
 
       if (redirectTimer.current !== null) window.clearTimeout(redirectTimer.current);
       redirectTimer.current = window.setTimeout(() => {
@@ -1527,7 +1520,7 @@ export default function QuoteForm() {
         .chip:hover { border-color:#facc15; background:#fff; }
       `}</style>
 
-      {/* Fullscreen overlay – jediné status UI */}
+      {/* Fullscreen overlay počas odosielania, presmerovania a pri chybe */}
       <FullScreenStatusOverlay
         open={overlay.open}
         state={overlay.state}
@@ -1550,7 +1543,7 @@ function FullScreenStatusOverlay({
   onRetry,
 }: {
   open: boolean;
-  state: "loading" | "success" | "error";
+  state: "loading" | "error";
   title: string;
   subtitle?: string;
   onClose?: () => void;
@@ -1571,13 +1564,6 @@ function FullScreenStatusOverlay({
               aria-label="Spracovávam…"
             />
           )}
-          {state === "success" && (
-            <div className="grid h-14 w-14 place-items-center rounded-full bg-emerald-100">
-              <svg viewBox="0 0 24 24" className="h-8 w-8 text-emerald-600" aria-hidden="true">
-                <path fill="currentColor" d="M9 16.2l-3.5-3.5 1.4-1.4 2.1 2.1 5.7-5.7 1.4 1.4z" />
-              </svg>
-            </div>
-          )}
           {state === "error" && (
             <div className="grid h-14 w-14 place-items-center rounded-full bg-rose-100">
               <svg viewBox="0 0 24 24" className="h-8 w-8 text-rose-600" aria-hidden="true">
@@ -1594,7 +1580,7 @@ function FullScreenStatusOverlay({
         {subtitle && <p className="mb-5 text-sm text-gray-600">{subtitle}</p>}
 
         <div className="flex justify-center gap-2">
-          {state === "loading" ? null : state === "success" ? null : (
+          {state === "loading" ? null : (
             <>
               <button
                 onClick={onRetry}

@@ -357,9 +357,10 @@ Možná automatizácia cez GitHub Actions
 - GTM Container ID: `GTM-PC774CDD`
 - Zdroj integrácie: `frontend/index.html`
 - Cieľ po úspešnom API `/api/form`: `https://www.geotherm.sk/cenova-ponuka/dakujeme-02/`
-- Presmerovanie prebehne 1500 ms po odpovedi backendu s `success: true`.
+- Po úspešnej odpovedi zostane načítavací modal zobrazený počas približne 1500 ms; následne sa zákazník automaticky presmeruje na cieľovú URL.
 - Osobné údaje formulára sa neposielajú do `dataLayer` ani GTM.
 - `dist/` sa neupravuje priamo; produkčné HTML sa generuje príkazom `npm run build`.
+- Pred produkčným buildom postupujte podľa [PRE-IT.md](PRE-IT.md): nastavte produkčný `VITE_TURNSTILE_SITE_KEY` vo `frontend/.env.production` a zodpovedajúci `TURNSTILE_SECRET_KEY` iba v backendovom prostredí. Lokálny `frontend/.env` obsahuje testovací kľúč a nesmie sa použiť pri produkčnom builde.
 
 **CSP**
 
