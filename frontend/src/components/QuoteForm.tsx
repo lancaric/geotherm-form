@@ -158,7 +158,6 @@ export default function QuoteForm() {
   const turnstileContainer = useRef<HTMLDivElement>(null);
   const turnstileWidgetId = useRef<string | null>(null);
   const redirectTimer = useRef<number | null>(null);
-  const submitController = useRef<AbortController | null>(null);
   const submittingRef = useRef(false);
   const [activeExtra, setActiveExtra] = useState<"new" | "recon" | null>(null);
 
@@ -469,26 +468,16 @@ export default function QuoteForm() {
       setPhase("submitting");
       submittingRef.current = true;
 
-      const controller = new AbortController();
-      submitController.current = controller;
-      const timeoutId = window.setTimeout(() => controller.abort(), 15000);
-
-      let res: Response;
-      try {
-        res = await fetch(`${apiUrl}/form`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            ...form,
-            formStartedAt,
-            turnstileToken,
-            uploadedFiles: uploadedFilesPayload,
-          }),
-          signal: controller.signal,
-        });
-      } finally {
-        window.clearTimeout(timeoutId);
-      }
+      const res = await fetch(`${apiUrl}/form`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...form,
+          formStartedAt,
+          turnstileToken,
+          uploadedFiles: uploadedFilesPayload,
+        }),
+      });
 
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.success) throw new Error(data?.message || "Chyba pri odoslaní formulára.");
@@ -547,7 +536,6 @@ export default function QuoteForm() {
 
   useEffect(() => {
     return () => {
-      submitController.current?.abort();
       if (redirectTimer.current !== null) {
         window.clearTimeout(redirectTimer.current);
       }
